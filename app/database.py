@@ -4,9 +4,10 @@ from contextlib import contextmanager
 from app.config import settings
 
 def get_connection():
-    conn = sqlite3.connect(settings.db_path)
+    conn = sqlite3.connect(settings.db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
-    # Enable Write-Ahead Logging for better concurrent read/write performance
+    # Enable Write-Ahead Logging and busy timeout for safe concurrent access
+    conn.execute("PRAGMA busy_timeout = 30000;")
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA foreign_keys=ON;")
     return conn
