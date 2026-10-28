@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from pydantic import BaseModel
 
 from app.config import settings
@@ -61,6 +61,10 @@ app.add_middleware(
 )
 
 # Health & LLM Status
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
+
 @app.get("/api/v1/health")
 def health_check():
     return {

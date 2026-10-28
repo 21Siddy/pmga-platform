@@ -52,7 +52,16 @@ class BPMNStudio {
     try {
       const result = await this.modeler.importXML(xml);
       const canvas = this.modeler.get('canvas');
-      canvas.zoom('fit-viewport');
+      // Only fit viewport if the canvas container is visible in DOM (has non-zero dimensions)
+      const container = document.getElementById(this.containerId);
+      if (container && container.clientWidth > 0 && container.clientHeight > 0) {
+        try {
+          canvas.resized();
+          canvas.zoom('fit-viewport');
+        } catch (zoomErr) {
+          console.warn('Viewport fit deferred until tab switch:', zoomErr);
+        }
+      }
       return result;
     } catch (err) {
       console.error('Error importing BPMN XML:', err);

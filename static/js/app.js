@@ -84,8 +84,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     panes.forEach(p => p.classList.toggle('active', p.id === tabId));
     if (tabId === 'tab-bpmn' && bpmnStudio && bpmnStudio.modeler) {
       setTimeout(() => {
-        const canvas = bpmnStudio.modeler.get('canvas');
-        if (canvas) canvas.zoom('fit-viewport');
+        try {
+          const canvas = bpmnStudio.modeler.get('canvas');
+          if (canvas) {
+            canvas.resized();
+            canvas.zoom('fit-viewport');
+          }
+        } catch (e) {
+          console.warn('Canvas zoom on tab switch:', e);
+        }
       }, 50);
     }
   }
@@ -206,8 +213,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (formalDoc) inputFormal.value = formalDoc.extracted_text;
 
     if (data.bpmn_model && bpmnStudio) {
-      await bpmnStudio.loadXML(data.bpmn_model.bpmn_xml);
-      document.getElementById('bpmn-canvas-title').textContent = data.bpmn_model.title || 'Process Diagram';
+      try {
+        await bpmnStudio.loadXML(data.bpmn_model.bpmn_xml);
+        document.getElementById('bpmn-canvas-title').textContent = data.bpmn_model.title || 'Process Diagram';
+      } catch (err) {
+        console.warn('Initial background XML load deferred:', err);
+      }
     }
 
     if (data.gaps && data.gaps.length > 0) {
