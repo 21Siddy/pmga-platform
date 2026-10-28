@@ -3,44 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CivicProcess — BPMN 2.0 & ISO 27001/27002 Gap Platform</title>
-  <meta name="description" content="Municipal and Critical Infrastructure Process Modeling and ISO 27002 Compliance Gap Intelligence Workbench">
+  <title>PMGA — Process Management and Gap Analysis</title>
+  <meta name="description" content="Process Management and ISO 27002 Gap Analysis Workbench for Critical Infrastructure and Public Administration">
 
-  <!-- Typography: Plus Jakarta Sans + Newsreader Editorial + JetBrains Mono -->
+  <!-- Typography: Plus Jakarta Sans + Newsreader + JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- bpmn-js Toolkit CSS (Standard Open Modeler) -->
+  <!-- bpmn-js Toolkit CSS -->
   <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/diagram-js.css" />
   <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/bpmn-js.css" />
   <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/bpmn-font/css/bpmn.css" />
 
-  <!-- Swiss Civic Editorial Design System -->
   <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
 
-  <!-- Top Banner: Psychological Safety & Transparency -->
-  <aside class="civic-pledge-banner">
-    <div class="pledge-container">
-      <div class="pledge-badge">MUNICIPAL RESILIENCE PLEDGE</div>
-      <div class="pledge-text">
-        <strong>Gaps are normal and expected!</strong> Operational resilience comes from transparent reality, not bureaucratic perfection. Document what staff actually do so genuine vulnerabilities can be addressed before security incidents happen.
-      </div>
-      <div class="pledge-actions">
-        <button id="btn-gdpr-info" class="pill-btn secondary">GDPR & ISO 27001 Privacy Notice</button>
-      </div>
-    </div>
-  </aside>
-
-  <!-- Navigation & Context Bar -->
+  <!-- Navigation & Header Bar -->
   <header class="app-header">
     <div class="brand">
-      <div class="brand-crest">CP</div>
+      <div class="brand-crest">PMGA</div>
       <div class="brand-titles">
-        <h1>CivicProcess</h1>
-        <span class="subtitle">BPMN 2.0 Studio & ISO 27002 Gap Workbench</span>
+        <h1>PMGA</h1>
+        <span class="subtitle">Process Management &amp; Gap Analysis</span>
       </div>
     </div>
 
@@ -55,7 +41,7 @@
     <div class="byok-settings">
       <button id="btn-byok-modal" class="byok-status-btn unconfigured">
         <span class="dot"></span>
-        <span id="byok-label">Gemini BYOK: Unset</span>
+        <span id="byok-label">LLM Engine: Check Status</span>
       </button>
     </div>
   </header>
@@ -63,7 +49,7 @@
   <!-- Step Workflow Tabs -->
   <nav class="workflow-tabs">
     <button class="tab-btn active" data-tab="tab-intake">
-      <span class="step-num">1</span> Process Intake & Evidence
+      <span class="step-num">1</span> Process Intake &amp; Evidence
     </button>
     <button class="tab-btn" data-tab="tab-bpmn">
       <span class="step-num">2</span> Interactive BPMN 2.0 Studio
@@ -82,19 +68,18 @@
     <!-- TAB 1: Intake & Evidence -->
     <section id="tab-intake" class="tab-pane active">
       <div class="intake-hero">
-        <h2>Ingest Operational Evidence & Process Descriptions</h2>
-        <p>Provide natural English field notes, helpdesk journals, or upload official handbooks (PDF, DOCX, Markdown). The system explicitly compares <em>operational reality</em> against <em>formal policy claims</em>.</p>
+        <h2>Ingest Operational Evidence &amp; Process Descriptions</h2>
+        <p>Enter free-text operational field notes, shorthand, or upload handbooks. The scientific pipeline extracts atomic steps and compares actual practice against formal policies.</p>
       </div>
 
       <!-- Quick Benchmark Loader -->
       <div class="benchmark-box">
         <div class="benchmark-header">
-          <span class="badge-accent">RECOMMENDED BENCHMARKS</span>
-          <h3>Load Real-World Public Municipal & Critical Infrastructure Case Studies</h3>
+          <span class="badge-accent">EMPIRICAL BENCHMARKS</span>
+          <h3>Verified Public Sector &amp; Critical Infrastructure Case Studies</h3>
         </div>
         <div id="benchmarks-list" class="benchmarks-grid">
-          <!-- Populated by JS -->
-          <div class="loading-state">Loading real municipal datasets...</div>
+          <div class="loading-state">Loading empirical case studies...</div>
         </div>
       </div>
 
@@ -102,13 +87,13 @@
         <!-- Panel A: Operational Reality -->
         <div class="intake-card reality-card">
           <div class="card-tag actual">OPERATIONAL REALITY (WHAT STAFF ACTUALLY DO)</div>
-          <h3>Lived Staff Practices & Notes</h3>
-          <p class="card-desc">Paste honest descriptions of day-to-day actions, workarounds, email shortcuts, or helpdesk practices.</p>
-          <textarea id="input-actual-process" class="civic-textarea" placeholder="e.g. When a citizen submits large files, our portal crashes, so we have them email blueprints directly to our personal inboxes. When sharing files with external inspectors, we use shared USB sticks..."></textarea>
+          <h3>Lived Staff Practices &amp; Free-Text Notes</h3>
+          <p class="card-desc">Type raw field notes, workarounds, or shorthand. Grammatical perfection is NOT required.</p>
+          <textarea id="input-actual-process" class="civic-textarea" placeholder="e.g. portal times out -> citizen emails cad file -> clerk saves to C:\Downloads -> copy to USB stick for inspector -> stamped paper copy filed in binder"></textarea>
           
           <div class="file-upload-row">
             <label class="file-label">
-              <span>Upload Actual Process Notes / Journal</span>
+              <span>Upload Notes / Journal</span>
               <input type="file" id="file-actual-process" accept=".pdf,.docx,.txt,.md">
             </label>
             <span id="file-actual-name" class="uploaded-filename">No file chosen</span>
@@ -118,13 +103,13 @@
         <!-- Panel B: Formal Policy / Rules -->
         <div class="intake-card policy-card">
           <div class="card-tag formal">FORMAL POLICY / MANDATES (WHAT THE RULES STATE)</div>
-          <h3>Official Policies & Council Directives</h3>
-          <p class="card-desc">Paste official handbook rules, security directives, or statutory requirements to cross-reference against practice.</p>
-          <textarea id="input-formal-policy" class="civic-textarea" placeholder="e.g. MUNICIPAL DIRECTIVE SEC-2023-04: All files must be encrypted in transit via TLS 1.3. Administrative credentials must never be shared and require hardware MFA tokens..."></textarea>
+          <h3>Official Policies &amp; Council Directives</h3>
+          <p class="card-desc">Official guidelines or statutory rules to evaluate compliance against.</p>
+          <textarea id="input-formal-policy" class="civic-textarea" placeholder="e.g. Directive SEC-2023: All citizen records must be uploaded via TLS 1.3 portal. Unencrypted USB media and personal email transfer strictly prohibited..."></textarea>
 
           <div class="file-upload-row">
             <label class="file-label">
-              <span>Upload Official Directive / Handbook</span>
+              <span>Upload Directive / Handbook</span>
               <input type="file" id="file-formal-policy" accept=".pdf,.docx,.txt,.md">
             </label>
             <span id="file-formal-name" class="uploaded-filename">No file chosen</span>
@@ -134,7 +119,7 @@
 
       <div class="intake-footer">
         <button id="btn-generate-bpmn" class="pill-btn primary large">
-          Generate Open BPMN 2.0 Model & Layout &rarr;
+          Run Scientific BPMN Generation &amp; Verification &rarr;
         </button>
       </div>
     </section>
@@ -144,7 +129,7 @@
       <div class="bpmn-toolbar">
         <div class="toolbar-title">
           <h2 id="bpmn-canvas-title">Interactive BPMN 2.0 Canvas</h2>
-          <span class="subtext">Fully editable open standard diagram. Changes persist in project revisions.</span>
+          <span class="subtext">Fully editable open standard diagram with live box resizer and mathematical verification metrics.</span>
         </div>
         <div class="toolbar-buttons">
           <button id="btn-save-bpmn" class="pill-btn secondary">Save Diagram Edits</button>
@@ -154,7 +139,31 @@
         </div>
       </div>
 
-      <div class="bpmn-wrapper">
+      <!-- Scientific Verification Telemetry Banner -->
+      <div id="telemetry-bar" class="telemetry-bar hidden">
+        <div class="telemetry-metric">
+          <span class="t-label">STRUCTURAL SOUNDNESS:</span>
+          <span id="t-soundness" class="t-value">--</span>
+        </div>
+        <div class="telemetry-metric">
+          <span class="t-label">SEMANTIC FAITHFULNESS:</span>
+          <span id="t-faithfulness" class="t-value">--</span>
+        </div>
+        <div class="telemetry-detail" id="t-detail">Verified 0 defects.</div>
+      </div>
+
+      <!-- Interactive Node Resizer Toolbar (Point #7) -->
+      <div class="bpmn-dimension-bar">
+        <span class="dim-label">SELECTED ELEMENT SIZE:</span>
+        <label>Width: <input type="number" id="node-width-input" class="dim-input" value="130" step="10" min="60" max="400"> px</label>
+        <label>Height: <input type="number" id="node-height-input" class="dim-input" value="80" step="10" min="40" max="300"> px</label>
+        <button id="btn-preset-compact" class="dim-btn">Compact</button>
+        <button id="btn-preset-standard" class="dim-btn active">Standard</button>
+        <button id="btn-preset-wide" class="dim-btn">Wide</button>
+        <button id="btn-preset-large" class="dim-btn">Large</button>
+      </div>
+
+      <div class="bpmn-wrapper resizable-container">
         <div id="bpmn-canvas" class="bpmn-canvas"></div>
       </div>
     </section>
@@ -164,7 +173,7 @@
       <div class="iso-header">
         <div class="iso-title">
           <h2>ISO/IEC 27002:2022 Control Baseline (93 Controls)</h2>
-          <p>Complete 93-control catalog across Organizational, People, Physical, and Technological domains. Filter by chapter or search specific requirements.</p>
+          <p>Complete 93-control catalog. Click 'Inspect Details' on any control for audit requirements, common gaps, and compensating controls.</p>
         </div>
         <div class="iso-actions">
           <select id="filter-iso-chapter" class="civic-select">
@@ -192,9 +201,7 @@
               <th width="15%">Action</th>
             </tr>
           </thead>
-          <tbody id="iso-controls-tbody">
-            <!-- Populated by JS -->
-          </tbody>
+          <tbody id="iso-controls-tbody"></tbody>
         </table>
       </div>
     </section>
@@ -203,7 +210,7 @@
     <section id="tab-gaps" class="tab-pane">
       <div class="gap-dashboard-header">
         <div class="dashboard-title">
-          <h2>Executive Compliance & Operational Gap Findings</h2>
+          <h2>Executive Compliance &amp; Operational Gap Findings</h2>
           <p>Plain-English breakdown of identified gaps, incident risks, who to consult, and pragmatic risk-based compensating controls.</p>
         </div>
         <div class="dashboard-actions">
@@ -217,7 +224,7 @@
         <div class="kpi-card">
           <span class="kpi-label">RESILIENCE SCORE</span>
           <div class="kpi-value" id="kpi-score">--%</div>
-          <span class="kpi-sub" id="kpi-score-sub">Based on operational alignment</span>
+          <span class="kpi-sub">Operational alignment score</span>
         </div>
         <div class="kpi-card critical">
           <span class="kpi-label">CRITICAL GAPS</span>
@@ -241,61 +248,69 @@
         <p id="exec-summary-text">Run gap analysis to evaluate process alignment.</p>
       </div>
 
-      <!-- Findings Accordion / Cards List -->
-      <div class="findings-container" id="findings-container">
-        <!-- Populated by JS -->
-      </div>
+      <div class="findings-container" id="findings-container"></div>
     </section>
 
   </main>
 
-  <!-- BYOK Gemini Modal -->
-  <div id="modal-byok" class="civic-modal-backdrop">
-    <div class="civic-modal">
+  <!-- ACCESSIBLE ISO CONTROL DETAIL MODAL DRAWER (Screenshot #1 Fix) -->
+  <div id="modal-iso-detail" class="civic-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-iso-title">
+    <div class="civic-modal large">
       <div class="modal-header">
-        <h3>Google Gemini API Key (BYOK)</h3>
-        <button class="modal-close" id="btn-close-byok">&times;</button>
+        <div class="modal-title-group">
+          <span id="modal-iso-badge" class="control-id-badge">A.8.2</span>
+          <h3 id="modal-iso-title">Privileged Access Rights</h3>
+        </div>
+        <button class="modal-close" id="btn-close-iso-detail" aria-label="Close modal">&times;</button>
       </div>
-      <div class="modal-body">
-        <p>In accordance with <strong>GDPR Article 25 (Privacy by Design)</strong> and <strong>ISO 27001 A.8.24</strong>, your key is kept strictly in your local browser session and passed per-request. It is never logged or written to disk on the server.</p>
-        <div class="form-group">
-          <label for="input-gemini-key">Enter Google Gemini API Key</label>
-          <input type="password" id="input-gemini-key" class="civic-input" placeholder="AIzaSy...">
-        </div>
-        <div class="form-group">
-          <label for="select-gemini-model">Gemini Model</label>
-          <select id="select-gemini-model" class="civic-select">
-            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast, High Quality)</option>
-            <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Reasoning)</option>
-          </select>
-        </div>
-        <div class="checkbox-row">
-          <label>
-            <input type="checkbox" id="chk-save-local" checked>
-            Remember in this browser (localStorage)
-          </label>
-        </div>
+      <div class="modal-body" id="modal-iso-body">
+        <!-- Rendered with structured cards -->
       </div>
       <div class="modal-footer">
-        <button id="btn-save-byok" class="pill-btn primary">Save Configuration</button>
+        <button id="btn-dismiss-iso-detail" class="pill-btn primary">Close</button>
       </div>
     </div>
   </div>
 
-  <!-- PII Alert Modal -->
-  <div id="modal-pii" class="civic-modal-backdrop">
+  <!-- LLM & BYOK CONFIGURATION MODAL -->
+  <div id="modal-byok" class="civic-modal-backdrop" role="dialog" aria-modal="true">
     <div class="civic-modal">
       <div class="modal-header">
-        <h3>Citizen PII & Sensitive Data Detected</h3>
-        <button class="modal-close" id="btn-close-pii">&times;</button>
+        <h3>LLM Provider &amp; Model Routing</h3>
+        <button class="modal-close" id="btn-close-byok">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="alert-desc">The pre-flight scanner detected personal citizen data or credentials in your uploaded file. Would you like to automatically redact these before LLM analysis?</p>
-        <div id="pii-items-list" class="pii-list"></div>
+        <p>Supports <strong>Google Gemini</strong> (e.g. <code>gemini-3.8-flash</code>) and <strong>University KI-Connect</strong> (OpenAI-compatible <code>mistral-small-4-119b</code>). Requests are paced through an automatic rate-limit queue.</p>
+        
+        <div class="form-group">
+          <label for="select-llm-provider">Active Provider</label>
+          <select id="select-llm-provider" class="civic-select">
+            <option value="gemini">Google Gemini (gemini-3.8-flash)</option>
+            <option value="kiconnect">University KI-Connect (OpenAI Compatible)</option>
+          </select>
+        </div>
+
+        <div id="gemini-key-group" class="form-group">
+          <label for="input-gemini-key">Gemini API Key</label>
+          <input type="password" id="input-gemini-key" class="civic-input" placeholder="AIzaSy...">
+        </div>
+
+        <div id="kiconnect-info-group" class="form-group hidden">
+          <div class="kiconnect-banner">
+            <strong>University KI-Connect (.env)</strong>
+            <p id="kiconnect-status-text">Endpoint: Loaded from .env (API_BASE &amp; API_KEY)</p>
+          </div>
+        </div>
+
+        <div class="checkbox-row">
+          <label>
+            <input type="checkbox" id="chk-save-local" checked>
+            Remember session configuration
+          </label>
+        </div>
       </div>
       <div class="modal-footer">
-        <button id="btn-apply-redaction" class="pill-btn primary">Apply Redaction & Proceed</button>
-        <button id="btn-keep-original" class="pill-btn secondary">Keep Original (Not Recommended)</button>
+        <button id="btn-save-byok" class="pill-btn primary">Save &amp; Activate</button>
       </div>
     </div>
   </div>
@@ -303,7 +318,7 @@
   <!-- External bpmn-js Modeler Bundle -->
   <script src="https://unpkg.com/bpmn-js@17.11.1/dist/bpmn-modeler.production.min.js"></script>
 
-  <!-- Modular Application Logic -->
+  <!-- Modular Scripts -->
   <script src="/static/js/api.js"></script>
   <script src="/static/js/bpmn-studio.js"></script>
   <script src="/static/js/gap-dashboard.js"></script>

@@ -1,5 +1,5 @@
 /**
- * CivicProcess Main Application Orchestrator
+ * PMGA Main Application Orchestrator
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -17,7 +17,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const modalByok = document.getElementById('modal-byok');
   const btnCloseByok = document.getElementById('btn-close-byok');
   const btnSaveByok = document.getElementById('btn-save-byok');
+  const selectLlmProvider = document.getElementById('select-llm-provider');
   const inputGeminiKey = document.getElementById('input-gemini-key');
+  const geminiKeyGroup = document.getElementById('gemini-key-group');
+  const kiconnectInfoGroup = document.getElementById('kiconnect-info-group');
+  const kiconnectStatusText = document.getElementById('kiconnect-status-text');
   const chkSaveLocal = document.getElementById('chk-save-local');
 
   const benchmarksList = document.getElementById('benchmarks-list');
@@ -34,10 +38,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnExportSvg = document.getElementById('btn-export-svg');
   const btnProceedToIso = document.getElementById('btn-proceed-to-iso');
 
+  // Box Resizing Elements (Point #7)
+  const nodeWidthInput = document.getElementById('node-width-input');
+  const nodeHeightInput = document.getElementById('node-height-input');
+  const btnPresetCompact = document.getElementById('btn-preset-compact');
+  const btnPresetStandard = document.getElementById('btn-preset-standard');
+  const btnPresetWide = document.getElementById('btn-preset-wide');
+  const btnPresetLarge = document.getElementById('btn-preset-large');
+
+  // Telemetry Elements
+  const telemetryBar = document.getElementById('telemetry-bar');
+  const tSoundness = document.getElementById('t-soundness');
+  const tFaithfulness = document.getElementById('t-faithfulness');
+  const tDetail = document.getElementById('t-detail');
+
+  // ISO Explorer & Accessible Modal (Screenshot #1 Fix)
   const filterIsoChapter = document.getElementById('filter-iso-chapter');
   const filterIsoSearch = document.getElementById('filter-iso-search');
   const isoTbody = document.getElementById('iso-controls-tbody');
   const btnRunGapAnalysis = document.getElementById('btn-run-gap-analysis');
+  const modalIsoDetail = document.getElementById('modal-iso-detail');
+  const modalIsoTitle = document.getElementById('modal-iso-title');
+  const modalIsoBadge = document.getElementById('modal-iso-badge');
+  const modalIsoBody = document.getElementById('modal-iso-body');
+  const btnCloseIsoDetail = document.getElementById('btn-close-iso-detail');
+  const btnDismissIsoDetail = document.getElementById('btn-dismiss-iso-detail');
 
   const btnExportExcel = document.getElementById('btn-export-excel-report');
   const btnGdprPurge = document.getElementById('btn-gdpr-purge');
@@ -58,27 +83,68 @@ document.addEventListener('DOMContentLoaded', async () => {
     t.addEventListener('click', () => switchTab(t.dataset.tab));
   });
 
-  // --- 2. BYOK Configuration ---
-  function updateByokStatus() {
-    const key = API.getApiKey();
-    if (key) {
-      byokStatusBtn.classList.remove('unconfigured');
-      byokStatusBtn.classList.add('configured');
-      byokLabel.textContent = 'Gemini BYOK: Active';
-      inputGeminiKey.value = key;
-    } else {
-      byokStatusBtn.classList.remove('configured');
-      byokStatusBtn.classList.add('unconfigured');
-      byokLabel.textContent = 'Gemini BYOK: Unset';
+  // --- 2. LLM Provider Status & Modal ---
+  async function updateLlmStatus() {
+    try {
+      const status = await API.getLLMStatus();
+      const currentProvider = API.getProvider();
+      selectLlmProvider.value = currentProvider;
+
+      if (currentProvider === 'gemini') {
+        const key = API.getApiKey();
+        if (key || status.gemini.configured) {
+          byokStatusBtn.classList.add('configured');
+          byokStatusBtn.classList.remove('unconfigured');
+          byokLabel.textContent = `Gemini (3.8-flash): Ready`;
+        } else {
+          byokStatusBtn.classList.add('unconfigured');
+          byokStatusBtn.classList.remove('configured');
+          byokLabel.textContent = 'Gemini Key Unset';
+        }
+        geminiKeyGroup.classList.remove('hidden');
+        kiconnectInfoGroup.classList.add('hidden');
+      } else {
+        if (status.kiconnect.configured) {
+          byokStatusBtn.classList.add('configured');
+          byokStatusBtn.classList.remove('unconfigured');
+          byokLabel.textContent = 'Uni KI-Connect: Ready';
+          kiconnectStatusText.textContent = `Active Model: ${status.kiconnect.model} | Pacing: ${status.min_interval_sec}s`;
+        } else {
+          byokStatusBtn.classList.add('unconfigured');
+          byokStatusBtn.classList.remove('configured');
+          byokLabel.textContent = 'Uni KI-Connect: Check .env';
+          kiconnectStatusText.textContent = 'API_BASE or API_KEY missing in .env file.';
+        }
+        geminiKeyGroup.classList.add('hidden');
+        kiconnectInfoGroup.classList.remove('hidden');
+      }
+
+      inputGeminiKey.value = API.getApiKey();
+    } catch (e) {
+      console.warn('Could not fetch LLM status:', e);
     }
   }
+
+  selectLlmProvider.addEventListener('change', (e) => {
+    const prov = e.target.value;
+    if (prov === 'gemini') {
+      geminiKeyGroup.classList.remove('hidden');
+      kiconnectInfoGroup.classList.add('hidden');
+    } else {
+      geminiKeyGroup.classList.add('hidden');
+      kiconnectInfoGroup.classList.remove('hidden');
+    }
+  });
 
   byokStatusBtn.addEventListener('click', () => modalByok.classList.add('open'));
   btnCloseByok.addEventListener('click', () => modalByok.classList.remove('open'));
   btnSaveByok.addEventListener('click', () => {
-    const key = inputGeminiKey.value.trim();
-    API.setApiKey(key, chkSaveLocal.checked);
-    updateByokStatus();
+    const prov = selectLlmProvider.value;
+    API.setProvider(prov);
+    if (prov === 'gemini') {
+      API.setApiKey(inputGeminiKey.value.trim(), chkSaveLocal.checked);
+    }
+    updateLlmStatus();
     modalByok.classList.remove('open');
   });
 
@@ -112,7 +178,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   btnNewProject.addEventListener('click', async () => {
-    const title = prompt('Enter a title for this municipal assessment project:', 'Citizen Service & Identity Review');
+    const title = prompt('Enter a title for this assessment:', 'Department Workflow Review');
     if (!title) return;
     const proj = await API.createProject(title);
     await refreshProjects(proj.id);
@@ -122,20 +188,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const data = await API.getProject(projId);
     if (!data) return;
 
-    // Populate inputs from documents
     const actualDoc = data.documents.find(d => d.doc_type === 'ACTUAL_PROCESS');
     const formalDoc = data.documents.find(d => d.doc_type === 'FORMAL_POLICY');
 
     if (actualDoc) inputActual.value = actualDoc.extracted_text;
     if (formalDoc) inputFormal.value = formalDoc.extracted_text;
 
-    // Load BPMN model if available
     if (data.bpmn_model && bpmnStudio) {
       await bpmnStudio.loadXML(data.bpmn_model.bpmn_xml);
       document.getElementById('bpmn-canvas-title').textContent = data.bpmn_model.title || 'Process Diagram';
     }
 
-    // Load gap findings if available
     if (data.gaps && data.gaps.length > 0) {
       const findings = data.gaps.map(g => ({
         ...g,
@@ -147,13 +210,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // --- 4. Benchmarks Ingestion ---
+  // --- 4. Empirical Benchmarks Ingestion ---
   async function loadBenchmarks() {
     const bms = await API.getBenchmarks();
     benchmarksList.innerHTML = bms.map(b => `
       <div class="bm-card" data-bmid="${b.id}">
         <h4>${b.title}</h4>
         <p>${b.description}</p>
+        <div class="bm-meta">Ref: ${b.reference_standard || 'ISO/IEC 27002'}</div>
         <div class="bm-load-btn">Load Case Study &rarr;</div>
       </div>
     `).join('');
@@ -170,7 +234,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // --- 5. File Uploads & PII Pre-flight ---
+  // --- 5. Free-Text File Uploads ---
   fileActual.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -181,9 +245,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     const res = await API.uploadDocument(activeProjectId, 'ACTUAL_PROCESS', file);
     inputActual.value = res.pii_report.has_pii ? res.pii_report.redacted_text : inputActual.value;
-    if (res.pii_report.has_pii) {
-      alert(`GDPR Notice: ${res.pii_report.detected_count} sensitive citizen data items detected and pre-redacted.`);
-    }
   });
 
   fileFormal.addEventListener('change', async (e) => {
@@ -198,42 +259,69 @@ document.addEventListener('DOMContentLoaded', async () => {
     inputFormal.value = res.pii_report.has_pii ? res.pii_report.redacted_text : inputFormal.value;
   });
 
-  // --- 6. Generate BPMN ---
+  // --- 6. Scientific BPMN Generation & Verification Loop ---
   btnGenerateBpmn.addEventListener('click', async () => {
     const processText = inputActual.value.trim();
     if (!processText) {
-      alert('Please provide process notes or load a benchmark case study first.');
+      alert('Please enter process notes or select an empirical benchmark case study.');
       return;
     }
 
     if (!activeProjectId) {
-      const proj = await API.createProject('New Process Assessment');
+      const proj = await API.createProject('Process Assessment');
       await refreshProjects(proj.id);
     }
 
     btnGenerateBpmn.disabled = true;
-    btnGenerateBpmn.textContent = 'Generating BPMN 2.0 Graph & Coordinates...';
+    btnGenerateBpmn.textContent = 'Generating & Mathematically Verifying BPMN Graph...';
 
     try {
       const res = await API.generateBPMN(activeProjectId, processText, inputFormal.value.trim());
       if (bpmnStudio) {
         await bpmnStudio.loadXML(res.bpmn_xml);
       }
+
+      // Display telemetry scorecard
+      if (res.telemetry) {
+        telemetryBar.classList.remove('hidden');
+        tSoundness.textContent = `${Math.round(res.telemetry.structural_soundness_score * 100)}%`;
+        tFaithfulness.textContent = `${Math.round(res.telemetry.faithfulness_score * 100)}%`;
+        const defects = res.telemetry.structural_defects.length;
+        tDetail.textContent = defects === 0 ? 'Mathematically sound. Zero structural deadlocks.' : `Warnings: ${res.telemetry.structural_defects[0]}`;
+      }
+
       switchTab('tab-bpmn');
     } catch (err) {
       alert('Error generating BPMN: ' + err.message);
     } finally {
       btnGenerateBpmn.disabled = false;
-      btnGenerateBpmn.textContent = 'Generate Open BPMN 2.0 Model & Layout →';
+      btnGenerateBpmn.textContent = 'Run Scientific BPMN Generation & Verification →';
     }
   });
 
-  // --- 7. BPMN Studio Toolbar Actions ---
+  // --- 7. Paint-Style Box & Node Resizing (Point #7) ---
+  function applyResize(w, h) {
+    if (bpmnStudio && bpmnStudio.resizeSelectedElement(w, h)) {
+      nodeWidthInput.value = w;
+      nodeHeightInput.value = h;
+    } else if (!bpmnStudio.selectedElement) {
+      alert('Please click on a BPMN task or element on the canvas to select it first.');
+    }
+  }
+
+  nodeWidthInput.addEventListener('change', () => applyResize(nodeWidthInput.value, nodeHeightInput.value));
+  nodeHeightInput.addEventListener('change', () => applyResize(nodeWidthInput.value, nodeHeightInput.value));
+
+  btnPresetCompact.addEventListener('click', () => applyResize(100, 60));
+  btnPresetStandard.addEventListener('click', () => applyResize(130, 80));
+  btnPresetWide.addEventListener('click', () => applyResize(180, 80));
+  btnPresetLarge.addEventListener('click', () => applyResize(200, 110));
+
   btnSaveBpmn.addEventListener('click', async () => {
     if (!bpmnStudio || !activeProjectId) return;
     const xml = await bpmnStudio.exportXML();
     await API.saveBPMN(activeProjectId, xml);
-    alert('BPMN 2.0 diagram saved as a new project version.');
+    alert('BPMN 2.0 diagram saved as a new version.');
   });
 
   btnExportBpmn.addEventListener('click', async () => {
@@ -243,7 +331,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `process_model_${activeProjectId || 'export'}.bpmn`;
+    a.download = `PMGA_Process_Model_${activeProjectId || 'export'}.bpmn`;
     a.click();
   });
 
@@ -254,13 +342,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `process_diagram_${activeProjectId || 'export'}.svg`;
+    a.download = `PMGA_Process_Diagram_${activeProjectId || 'export'}.svg`;
     a.click();
   });
 
   btnProceedToIso.addEventListener('click', () => switchTab('tab-iso'));
 
-  // --- 8. ISO Controls Catalog ---
+  // --- 8. ISO Controls Explorer & Accessible Drawer (Screenshot #1 Fix) ---
   async function loadIsoControls() {
     const data = await API.getISOControls();
     allIsoControls = data.controls || [];
@@ -281,14 +369,71 @@ document.addEventListener('DOMContentLoaded', async () => {
     `).join('');
 
     document.querySelectorAll('.btn-inspect-control').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const c = allIsoControls.find(x => x.control_id === btn.dataset.cid);
-        if (c) {
-          alert(`Control: ${c.control_id} - ${c.title}\n\nTypical Municipal Evidence:\n${c.evidence}\n\nCommon Real-World Gaps:\n${c.common_gaps}\n\nPragmatic Compromise / Compensating Controls:\n${c.compensating_controls}`);
-        }
-      });
+      btn.addEventListener('click', () => openIsoDetailModal(btn.dataset.cid));
     });
   }
+
+  function openIsoDetailModal(controlId) {
+    const c = allIsoControls.find(x => x.control_id === controlId);
+    if (!c) return;
+
+    modalIsoBadge.textContent = c.control_id;
+    modalIsoTitle.textContent = c.title;
+
+    modalIsoBody.innerHTML = `
+      <div class="iso-detail-card">
+        <h5>Chapter &amp; Domain</h5>
+        <p>${c.chapter} &bull; Type: ${c.type} &bull; Concept: ${c.concept}</p>
+      </div>
+
+      <div class="iso-detail-card">
+        <h5>Plain English Requirement</h5>
+        <p>${c.requirement}</p>
+      </div>
+
+      <div class="iso-detail-card">
+        <h5>Sub-Controls Checklist</h5>
+        <pre>${c.sub_controls || 'Standard baseline review'}</pre>
+      </div>
+
+      <div class="iso-detail-card">
+        <h5>Typical Audit Evidence</h5>
+        <p>${c.evidence || 'Documented SOPs, access tickets, or system logs'}</p>
+      </div>
+
+      <div class="iso-detail-card">
+        <h5>Common Real-World Operational Gaps</h5>
+        <p>${c.common_gaps || 'Informal workarounds without audit logging'}</p>
+      </div>
+
+      <div class="iso-detail-card">
+        <h5>Roles to Consult</h5>
+        <p>${c.consult_roles || 'Department Leads and Systems Administrators'}</p>
+      </div>
+
+      <div class="iso-detail-card highlight">
+        <h5>Pragmatic Compromise / Compensating Controls</h5>
+        <p>${c.compensating_controls || 'Deploy temporary monitored jump-hosts or time-boxed delegation'}</p>
+      </div>
+    `;
+
+    modalIsoDetail.classList.add('open');
+  }
+
+  function closeIsoDetailModal() {
+    modalIsoDetail.classList.remove('open');
+  }
+
+  btnCloseIsoDetail.addEventListener('click', closeIsoDetailModal);
+  btnDismissIsoDetail.addEventListener('click', closeIsoDetailModal);
+
+  // Keyboard accessibility: Close modals on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeIsoDetailModal();
+      modalByok.classList.remove('open');
+    }
+  });
 
   filterIsoChapter.addEventListener('change', (e) => {
     const chap = e.target.value.toLowerCase();
@@ -309,19 +454,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- 9. Run Gap Analysis ---
   btnRunGapAnalysis.addEventListener('click', async () => {
     if (!activeProjectId) {
-      alert('Please select or create an assessment project first.');
+      alert('Please select an assessment project first.');
       return;
     }
 
     btnRunGapAnalysis.disabled = true;
-    btnRunGapAnalysis.textContent = 'Analyzing Lived Reality vs ISO Baseline...';
+    btnRunGapAnalysis.textContent = 'Evaluating Operational Alignment...';
 
     try {
       const res = await API.runGapAnalysis(activeProjectId);
       GapDashboard.render(res);
       switchTab('tab-gaps');
     } catch (err) {
-      alert('Error analyzing gaps: ' + err.message);
+      alert('Error running gap analysis: ' + err.message);
     } finally {
       btnRunGapAnalysis.disabled = false;
       btnRunGapAnalysis.textContent = 'Run Plain-English Gap Analysis →';
@@ -336,7 +481,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   btnGdprPurge.addEventListener('click', async () => {
     if (!activeProjectId) return;
-    const confirmed = confirm('GDPR Art. 17 Complete Erasure:\nThis will permanently expunge this project, all uploaded documents, BPMN models, and gap assessments from server disk and database.\n\nAre you sure?');
+    const confirmed = confirm('GDPR Art. 17 Erasure:\nPermanently expunge this project and all data from database and disk?');
     if (!confirmed) return;
 
     await API.gdprPurge(activeProjectId);
@@ -345,12 +490,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     inputFormal.value = '';
     await refreshProjects();
     switchTab('tab-intake');
-    alert('Project data permanently expunged under GDPR principles.');
+    alert('Project permanently expunged.');
   });
 
   // --- Initialization ---
   bpmnStudio = new BPMNStudio('bpmn-canvas');
-  updateByokStatus();
+  await updateLlmStatus();
   await refreshProjects();
   await loadBenchmarks();
   await loadIsoControls();

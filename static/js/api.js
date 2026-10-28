@@ -1,20 +1,27 @@
 /**
- * CivicProcess API Client & BYOK Storage
- * Follows ISO 27001 / GDPR: Key is kept in browser memory or optional localStorage,
- * passed only via X-Gemini-API-Key header.
+ * PMGA API Client
+ * Supports Google Gemini & University KI-Connect (OpenAI-compatible) with rate-limit pacing.
  */
 
 const API = {
   getApiKey() {
-    return localStorage.getItem('civic_gemini_key') || sessionStorage.getItem('civic_gemini_key') || '';
+    return localStorage.getItem('pmga_gemini_key') || sessionStorage.getItem('pmga_gemini_key') || '';
   },
 
-  setApiKey(key, persistInLocal = true) {
-    if (persistInLocal) {
-      localStorage.setItem('civic_gemini_key', key);
+  setApiKey(key, persist = true) {
+    if (persist) {
+      localStorage.setItem('pmga_gemini_key', key);
     } else {
-      sessionStorage.setItem('civic_gemini_key', key);
+      sessionStorage.setItem('pmga_gemini_key', key);
     }
+  },
+
+  getProvider() {
+    return localStorage.getItem('pmga_llm_provider') || 'gemini';
+  },
+
+  setProvider(provider) {
+    localStorage.setItem('pmga_llm_provider', provider);
   },
 
   getHeaders() {
@@ -26,9 +33,30 @@ const API = {
     return headers;
   },
 
+  async handleResponse(res) {
+    if (!res.ok) {
+      let errorMsg = `Server error ${res.status}`;
+      try {
+        const errJson = await res.json();
+        errorMsg = errJson.detail || errJson.message || errorMsg;
+      } catch (e) {
+        // Fallback for non-JSON errors
+        const text = await res.text();
+        if (text) errorMsg = text.slice(0, 200);
+      }
+      throw new Error(errorMsg);
+    }
+    return res.json();
+  },
+
+  async getLLMStatus() {
+    const res = await fetch('/api/v1/llm/status');
+    return this.handleResponse(res);
+  },
+
   async listProjects() {
     const res = await fetch('/api/v1/projects');
-    return res.json();
+    return this.handleResponse(res);
   },
 
   async createProject(title, description = '') {
@@ -37,17 +65,17 @@ const API = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, description })
     });
-    return res.json();
+    return this.handleResponse(res);
   },
 
   async getProject(projectId) {
     const res = await fetch(`/api/v1/projects/${projectId}`);
-    return res.json();
+    return this.handleResponse(res);
   },
 
   async getBenchmarks() {
     const res = await fetch('/api/v1/datasets/benchmarks');
-    return res.json();
+    return this.handleResponse(res);
   },
 
   async loadBenchmark(benchmarkId, projectId = null) {
@@ -59,7 +87,7 @@ const API = {
       method: 'POST',
       body: formData
     });
-    return res.json();
+    return this.handleResponse(res);
   },
 
   async uploadDocument(projectId, docType, file) {
@@ -72,7 +100,7 @@ const API = {
       method: 'POST',
       body: formData
     });
-    return res.json();
+    return this.handleResponse(res);
   },
 
   async generateBPMN(projectId, processText, policyContext) {
@@ -85,10 +113,11 @@ const API = {
       body: JSON.stringify({
         project_id: projectId,
         process_text: processText,
-        policy_context: policyContext
+        policy_context: policyContext,
+        provider: this.getProvider()
       })
     });
-    return res.json();
+    return this.handleResponse(res);
   },
 
   async saveBPMN(projectId, bpmnXml) {
@@ -100,13 +129,13 @@ const API = {
         bpmn_xml: bpmnXml
       })
     });
-    return res.json();
+    return this.handleResponse(res);
   },
 
   async getISOControls(chapter = '') {
     const url = chapter ? `/api/v1/iso/controls?chapter=${encodeURIComponent(chapter)}` : '/api/v1/iso/controls';
     const res = await fetch(url);
-    return res.json();
+    return this.handleResponse(res);
   },
 
   async runGapAnalysis(projectId, selectedControlIds = null) {
@@ -118,16 +147,17 @@ const API = {
       },
       body: JSON.stringify({
         project_id: projectId,
-        selected_control_ids: selectedControlIds
+        selected_control_ids: selectedControlIds,
+        provider: this.getProvider()
       })
     });
-    return res.json();
+    return this.handleResponse(res);
   },
 
   async gdprPurge(projectId) {
     const res = await fetch(`/api/v1/gdpr/purge/${projectId}`, {
       method: 'DELETE'
     });
-    return res.json();
+    return this.handleResponse(res);
   }
 };

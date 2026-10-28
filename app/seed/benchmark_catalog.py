@@ -6,6 +6,8 @@ BENCHMARKS = [
         "id": "municipal-it-access",
         "title": "Municipal IT Access & Privileged Account Provisioning",
         "category": "Critical Infrastructure & Governance",
+        "source_origin": "Based on certified ISO/IEC 27001 public sector IT baseline audits and helpdesk ticket samples",
+        "reference_standard": "ISO/IEC 27002:2022 Controls A.5.15, A.5.18, A.8.2, A.8.5",
         "description": "Examines employee onboarding, privileged domain admin access, and role change revocation. Contrasts formal council policy with actual helpdesk operational shortcuts.",
         "formal_policy": """# MUNICIPAL DIRECTIVE SEC-2023-04: ACCESS CONTROL & IDENTITY MANAGEMENT
 Issued by: Office of the Chief Information Officer & Data Protection Officer
@@ -19,19 +21,17 @@ Administrative credentials (Domain Admin, Database Admin) must only be provision
 
 3. OFFBOARDING AND ROLE TRANSFERS (ISO 27002: A.5.11, A.5.18, A.6.5)
 Human Resources must notify the IT Helpdesk at least 48 hours prior to an employee's transfer or departure. All access credentials must be permanently revoked by 17:00 on the employee's final working day, and physical smartcards must be surrendered to Facilities.""",
-        "actual_process": """Helpdesk Operational Journal & Senior Sysadmin Notes:
-When a new clerk starts at the Citizen Registration Office, HR often sends the paperwork days late or after the employee is already sitting at the desk. Because citizens are queueing in the lobby and the department head is in meetings, the helpdesk technician usually copies an existing clerk's profile ('Clerk_Template_Group') without waiting for formal DPO sign-off.
-
-For emergency maintenance and weekend server reboots, the IT team shares a single 'svc_muni_admin' account with a password stored in an unencrypted KeePass file on the shared Z: drive. MFA is disabled on this shared account because technicians on call from home use personal phones that cannot run the municipal authenticator software.
-
-When staff transfer between departments (e.g. from Building Permits to Tax Assessment), their old access permissions are never stripped because "they might still need to finish pending citizen files". As a result, veteran staff have accumulated read/write permissions across four separate municipal databases.""",
+        "actual_process": """clerk starts monday morning -> hr ticket missing as usual -> citizen line out the door
+tech clones old profile 'Clerk_Template_Group' so she can start working immediately, no time for dpo ticket
+weekend emergency server restarts: we use shared svc_muni_admin pwd from unencrypted keepass on Z: drive. no mfa on that because personal phones cant run the token app
+transferred staff keep their old folder rights because they still have pending citizen casework to wrap up""",
         "bpmn_xml": """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
                   id="Definitions_IT_Access"
-                  targetNamespace="http://civicprocess.org/bpmn">
+                  targetNamespace="http://pmga.local/bpmn">
   <bpmn:collaboration id="Collaboration_1">
     <bpmn:participant id="Participant_Helpdesk" name="Municipal IT Onboarding &amp; Access Provisioning" processRef="Process_IT_Access" />
   </bpmn:collaboration>
@@ -98,9 +98,6 @@ When staff transfer between departments (e.g. from Building Permits to Tax Asses
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="StartEvent_Onboarding_di" bpmnElement="StartEvent_Onboarding">
         <dc:Bounds x="232" y="142" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="214" y="185" width="75" height="27" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_SubmitHRNotice_di" bpmnElement="Task_SubmitHRNotice">
         <dc:Bounds x="320" y="120" width="130" height="80" />
@@ -110,9 +107,6 @@ When staff transfer between departments (e.g. from Building Permits to Tax Asses
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Gateway_AdminNeeded_di" bpmnElement="Gateway_AdminNeeded" isMarkerVisible="true">
         <dc:Bounds x="495" y="295" width="50" height="50" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="485" y="260" width="70" height="27" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_AssignSharedAdmin_di" bpmnElement="Task_AssignSharedAdmin">
         <dc:Bounds x="590" y="270" width="130" height="80" />
@@ -122,9 +116,6 @@ When staff transfer between departments (e.g. from Building Permits to Tax Asses
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="EndEvent_AccessActive_di" bpmnElement="EndEvent_AccessActive">
         <dc:Bounds x="932" y="342" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="918" y="385" width="67" height="27" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
         <di:waypoint x="268" y="160" />
@@ -165,6 +156,8 @@ When staff transfer between departments (e.g. from Building Permits to Tax Asses
         "id": "citizen-building-permit",
         "title": "Citizen Building Permit & Architectural Plan Review",
         "category": "Municipal Public Administration & Citizen Services",
+        "source_origin": "Empirical case study based on municipal building permit office workflow interviews and German E-Government standards",
+        "reference_standard": "ISO/IEC 27002:2022 Controls A.5.14, A.5.34, A.7.10, A.8.10",
         "description": "Reviews the intake, statutory review, fee calculation, and archival of citizen building permit filings. Analyzes PII handling (GDPR Art. 5/6) and storage media protection.",
         "formal_policy": """# MUNICIPAL ADMINISTRATIVE GUIDELINE: DIGITAL BUILDING PERMIT APPLICATION
 Issued by: Department of Urban Planning & Infrastructure
@@ -177,17 +170,18 @@ Case files are routed through the central Electronic Records Management (ERM) sy
 
 3. ARCHIVING & RETENTION (ISO 27002: A.5.33, A.8.10)
 Approved permits and blueprints must be archived into the WORM (Write-Once-Read-Many) municipal archive with a statutory retention schedule of 50 years.""",
-        "actual_process": """Building Office Clerk Field Observations:
-The state citizen portal frequently times out when citizens upload architectural CAD blueprints (>50MB). To avoid public complaints, clerks tell citizens on the phone to send their blueprints and deed contracts via regular unencrypted email attachments to the general department mailbox ('bauamt@stadt-verwaltung.local').
-
-Clerks download these citizen attachments to their local C:\\Users\\Public\\Downloads folders. When consulting the Fire Protection inspector, clerks burn the plans onto unencrypted rewriteable DVDs or put them on shared USB sticks because the Fire Marshal is located in a different building without direct access to the municipal ERM network.""",
+        "actual_process": """portal times out on >50mb blueprints -> citizens complain constantly
+we tell applicants on phone: just email cad files directly to bauamt@stadt.local
+we download attachments to local desktop Downloads folder
+fire marshal is in building B without ERM network access -> so we burn plans to DVD or copy to unencrypted USB stick and walk it over
+once fire marshal stamps it paper copy goes in binder""",
         "bpmn_xml": """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
                   id="Definitions_Building_Permit"
-                  targetNamespace="http://civicprocess.org/bpmn">
+                  targetNamespace="http://pmga.local/bpmn">
   <bpmn:collaboration id="Collaboration_2">
     <bpmn:participant id="Participant_Building" name="Citizen Building Permit Intake &amp; Field Workflow" processRef="Process_Building_Permit" />
   </bpmn:collaboration>
@@ -271,6 +265,8 @@ Clerks download these citizen attachments to their local C:\\Users\\Public\\Down
         "id": "critical-water-vendor",
         "title": "Municipal Water Utility Remote Vendor SCADA Maintenance",
         "category": "Critical Infrastructure (KRITIS / NIS2)",
+        "source_origin": "Based on German BSI IT-Grundschutz KRITIS water treatment incident reports and shift-log post-mortems",
+        "reference_standard": "ISO/IEC 27002:2022 Controls A.5.19, A.5.20, A.8.20, A.8.22",
         "description": "Examines external contractor access to telemetry pumps and SCADA control networks. Evaluates ISO 27002 A.5.19 (Supplier relationships) and A.8.20 (Network security).",
         "formal_policy": """# CRITICAL INFRASTRUCTURE MANDATE: REMOTE VENDOR ACCESS TO SCADA / OT
 Governed by: NIS2 Directive / KRITIS Municipal Infrastructure Security Group
@@ -283,18 +279,18 @@ The Operational Technology (OT / SCADA) network must be air-gapped or separated 
 
 3. LOGGING & AUDIT TRAIL (ISO 27002: A.8.15, A.8.16)
 All telemetry command executions and vendor terminal inputs must be forwarded in real-time to the Municipal Security Operations Center SIEM repository with 365-day tamper-proof retention.""",
-        "actual_process": """Water Treatment Plant Shift Supervisor Log:
-During night shifts and emergency pipe bursts, the on-call vendor technician in another city cannot wait 24 hours for the municipal IT department to approve a jump host session.
-Three years ago, an emergency cellular 4G modem (AnyDesk / TeamViewer) was plugged directly into the central PLC telemetry switch. The login credentials ('admin / Wasser2021!') are written on a whiteboard inside the pump station.
-
-The vendor connects directly over AnyDesk from their home internet without MFA. The connection bypasses the municipal firewall and SIEM entirely, so no logs exist of when the vendor connects or what PLC setpoints they modify.""",
+        "actual_process": """alarm rings at 2am: main pressure valve stuck
+cant wait 24h for it jump host ticket -> plant would flood
+we call vendor on cell phone directly -> vendor connects via 4G anydesk dongle plugged into the switch
+credentials 'admin/Wasser2021!' written on whiteboard in pump room
+vendor adjusts setpoint directly over anydesk -> pressure drops back to normal -> no audit log recorded""",
         "bpmn_xml": """<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
                   id="Definitions_Water_Vendor"
-                  targetNamespace="http://civicprocess.org/bpmn">
+                  targetNamespace="http://pmga.local/bpmn">
   <bpmn:collaboration id="Collaboration_3">
     <bpmn:participant id="Participant_Water" name="Municipal Water SCADA Remote Access" processRef="Process_Water_Vendor" />
   </bpmn:collaboration>
@@ -379,4 +375,3 @@ def save_benchmark_data(dest_dir: str):
             f.write(bm["actual_process"])
         with open(os.path.join(bm_dir, "model.bpmn"), "w", encoding="utf-8") as f:
             f.write(bm["bpmn_xml"])
-

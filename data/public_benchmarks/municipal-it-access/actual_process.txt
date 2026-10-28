@@ -1,6 +1,4 @@
-Helpdesk Operational Journal & Senior Sysadmin Notes:
-When a new clerk starts at the Citizen Registration Office, HR often sends the paperwork days late or after the employee is already sitting at the desk. Because citizens are queueing in the lobby and the department head is in meetings, the helpdesk technician usually copies an existing clerk's profile ('Clerk_Template_Group') without waiting for formal DPO sign-off.
-
-For emergency maintenance and weekend server reboots, the IT team shares a single 'svc_muni_admin' account with a password stored in an unencrypted KeePass file on the shared Z: drive. MFA is disabled on this shared account because technicians on call from home use personal phones that cannot run the municipal authenticator software.
-
-When staff transfer between departments (e.g. from Building Permits to Tax Assessment), their old access permissions are never stripped because "they might still need to finish pending citizen files". As a result, veteran staff have accumulated read/write permissions across four separate municipal databases.
+clerk starts monday morning -> hr ticket missing as usual -> citizen line out the door
+tech clones old profile 'Clerk_Template_Group' so she can start working immediately, no time for dpo ticket
+weekend emergency server restarts: we use shared svc_muni_admin pwd from unencrypted keepass on Z: drive. no mfa on that because personal phones cant run the token app
+transferred staff keep their old folder rights because they still have pending citizen casework to wrap up

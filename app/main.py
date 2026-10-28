@@ -1,9 +1,10 @@
 import os
 import json
 import uuid
+import logging
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -14,30 +15,39 @@ from app.database import init_db, get_db
 from app.seed import ensure_initial_datasets
 from app.services.document_service import DocumentService
 from app.services.iso_excel_service import ISOExcelService
+from app.services.llm_client import LLMClient
 from app.services.bpmn_engine import BPMNEngine, BPMNProcessGraph
 from app.services.gap_analyzer import GapAnalyzer
 
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Automatic application lifecycle manager:
-    1. Initializes/migrates the SQLite database tables on startup.
-    2. Ensures the 93-control ISO 27002:2022 Excel file and benchmark datasets exist.
-    """
+    """Automatic application lifecycle manager."""
     init_db()
     ensure_initial_datasets()
     yield
 
-
 app = FastAPI(
-    title="CivicProcess — BPMN 2.0 & ISO 27001/27002 Gap Platform",
+    title="PMGA — Process Management and Gap Analysis",
     description="GovTech & Critical Infrastructure Process Modeling and Compliance Gap Workbench",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
-# CORS configuration
+# Global Structured JSON Error Handler (Prevents raw HTML 500s from reaching browser)
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global unhandled exception on {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "error_type": exc.__class__.__name__,
+            "path": request.url.path
+        }
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
@@ -46,16 +56,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# Health Check (Coolify / Cloudflare)
+# Health & LLM Status
 @app.get("/api/v1/health")
 def health_check():
     return {
         "status": "healthy",
         "app_env": settings.APP_ENV,
         "database": "sqlite_ready",
-        "version": "1.0.0"
+        "version": "1.1.0"
     }
+
+@app.get("/api/v1/llm/status")
+def get_llm_status():
+    return LLMClient.get_provider_status()
 
 # 1. Projects API
 class ProjectCreateRequest(BaseModel):
@@ -98,7 +111,7 @@ def get_project(project_id: str):
 # 2. Public Benchmarks API
 @app.get("/api/v1/datasets/benchmarks")
 def get_benchmarks():
-    bm_file = os.path.join("data", "public_benchmarks", "benchmarks_index.json")
+    bm_file = os.path.join(settings.DATA_DIR, "public_benchmarks", "benchmarks_index.json")
     if os.path.exists(bm_file):
         with open(bm_file, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -109,7 +122,7 @@ def load_benchmark_into_project(
     benchmark_id: str = Form(...),
     project_id: Optional[str] = Form(None)
 ):
-    bm_file = os.path.join("data", "public_benchmarks", "benchmarks_index.json")
+    bm_file = os.path.join(settings.DATA_DIR, "public_benchmarks", "benchmarks_index.json")
     if not os.path.exists(bm_file):
         raise HTTPException(status_code=404, detail="Benchmark dataset not found")
     
@@ -157,7 +170,7 @@ def load_benchmark_into_project(
 @app.post("/api/v1/documents/upload")
 async def upload_document(
     project_id: str = Form(...),
-    doc_type: str = Form(...), # 'ACTUAL_PROCESS', 'FORMAL_POLICY', 'EVIDENCE_JOURNAL'
+    doc_type: str = Form(...),
     file: UploadFile = File(...)
 ):
     save_path = os.path.join(settings.uploads_path, f"{uuid.uuid4()}_{file.filename}")
@@ -189,11 +202,13 @@ async def upload_document(
         "pii_report": pii_report
     }
 
-# 4. BPMN Generation & Updating
+# 4. BPMN Generation with Scientific Verification
 class BPMNGenerateRequest(BaseModel):
     project_id: str
     process_text: str
     policy_context: Optional[str] = ""
+    provider: Optional[str] = None
+    model_name: Optional[str] = None
 
 @app.post("/api/v1/bpmn/generate")
 def generate_bpmn_from_text(
@@ -203,7 +218,9 @@ def generate_bpmn_from_text(
     graph = BPMNEngine.generate_graph_from_text(
         process_text=req.process_text,
         policy_context=req.policy_context,
-        api_key=x_gemini_api_key
+        api_key=x_gemini_api_key,
+        provider=req.provider,
+        model_name=req.model_name
     )
     bpmn_xml = BPMNEngine.compile_graph_to_bpmn_xml(graph)
     bpmn_id = str(uuid.uuid4())
@@ -218,7 +235,8 @@ def generate_bpmn_from_text(
         "id": bpmn_id,
         "title": graph.process_title,
         "bpmn_xml": bpmn_xml,
-        "graph": graph.model_dump()
+        "graph": graph.model_dump(),
+        "telemetry": graph.telemetry.model_dump() if graph.telemetry else None
     }
 
 class BPMNUpdateRequest(BaseModel):
@@ -255,6 +273,8 @@ def list_iso_controls(chapter: Optional[str] = Query(None)):
 class RunGapAnalysisRequest(BaseModel):
     project_id: str
     selected_control_ids: Optional[List[str]] = None
+    provider: Optional[str] = None
+    model_name: Optional[str] = None
 
 @app.post("/api/v1/analysis/gaps")
 def run_gap_analysis(
@@ -273,20 +293,21 @@ def run_gap_analysis(
     bpmn_xml = bpmn["bpmn_xml"] if bpmn else ""
 
     all_controls = ISOExcelService.load_master_checklist()
-    if req.selected_control_ids:
-        candidate_controls = [c for c in all_controls if c["control_id"] in req.selected_control_ids]
-    else:
-        candidate_controls = all_controls
+    candidate_controls = (
+        [c for c in all_controls if c["control_id"] in req.selected_control_ids]
+        if req.selected_control_ids else all_controls
+    )
 
     result = GapAnalyzer.analyze_process(
         process_text=p_text,
         policy_text=pol_text,
         bpmn_xml=bpmn_xml,
         selected_controls=candidate_controls,
-        api_key=x_gemini_api_key
+        api_key=x_gemini_api_key,
+        provider=req.provider,
+        model_name=req.model_name
     )
 
-    # Persist findings into database
     with get_db() as conn:
         conn.execute("DELETE FROM gap_assessments WHERE project_id = ?", (req.project_id,))
         for f in result.findings:
@@ -322,7 +343,7 @@ def export_excel_report(project_id: str):
         item["compensating_controls"] = json.loads(g["compensating_controls_json"] or "[]")
         gaps_list.append(item)
 
-    file_name = f"ISO27002_Gap_Report_{project_id[:8]}.xlsx"
+    file_name = f"PMGA_ISO27002_Gap_Report_{project_id[:8]}.xlsx"
     out_path = os.path.join(settings.exports_path, file_name)
     ISOExcelService.export_annotated_gap_report(out_path, proj["title"], gaps_list)
     return FileResponse(out_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=file_name)
@@ -333,7 +354,7 @@ def export_bpmn_xml(project_id: str):
         bpmn = conn.execute("SELECT * FROM bpmn_models WHERE project_id = ? ORDER BY version DESC LIMIT 1", (project_id,)).fetchone()
         if not bpmn:
             raise HTTPException(status_code=404, detail="No BPMN model found for this project")
-        file_name = f"Process_Model_{project_id[:8]}.bpmn"
+        file_name = f"PMGA_Process_Model_{project_id[:8]}.bpmn"
         out_path = os.path.join(settings.exports_path, file_name)
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(bpmn["bpmn_xml"])
@@ -343,7 +364,6 @@ def export_bpmn_xml(project_id: str):
 @app.delete("/api/v1/gdpr/purge/{project_id}")
 def gdpr_purge_project(project_id: str):
     with get_db() as conn:
-        # Delete records
         conn.execute("DELETE FROM gap_assessments WHERE project_id = ?", (project_id,))
         conn.execute("DELETE FROM bpmn_models WHERE project_id = ?", (project_id,))
         docs = conn.execute("SELECT file_path FROM documents WHERE project_id = ?", (project_id,)).fetchall()
@@ -359,10 +379,10 @@ def gdpr_purge_project(project_id: str):
 
     return {
         "status": "success",
-        "message": f"Project {project_id} and all related documents, BPMN models, and gap assessments permanently expunged under GDPR Art. 17."
+        "message": f"Project {project_id} permanently expunged under GDPR Art. 17."
     }
 
-# Serve static assets and index.html
+# Static Assets
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")

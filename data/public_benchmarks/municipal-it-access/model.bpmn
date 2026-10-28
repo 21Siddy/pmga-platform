@@ -4,7 +4,7 @@
                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
                   id="Definitions_IT_Access"
-                  targetNamespace="http://civicprocess.org/bpmn">
+                  targetNamespace="http://pmga.local/bpmn">
   <bpmn:collaboration id="Collaboration_1">
     <bpmn:participant id="Participant_Helpdesk" name="Municipal IT Onboarding &amp; Access Provisioning" processRef="Process_IT_Access" />
   </bpmn:collaboration>
@@ -71,9 +71,6 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="StartEvent_Onboarding_di" bpmnElement="StartEvent_Onboarding">
         <dc:Bounds x="232" y="142" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="214" y="185" width="75" height="27" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_SubmitHRNotice_di" bpmnElement="Task_SubmitHRNotice">
         <dc:Bounds x="320" y="120" width="130" height="80" />
@@ -83,9 +80,6 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Gateway_AdminNeeded_di" bpmnElement="Gateway_AdminNeeded" isMarkerVisible="true">
         <dc:Bounds x="495" y="295" width="50" height="50" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="485" y="260" width="70" height="27" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Task_AssignSharedAdmin_di" bpmnElement="Task_AssignSharedAdmin">
         <dc:Bounds x="590" y="270" width="130" height="80" />
@@ -95,9 +89,6 @@
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="EndEvent_AccessActive_di" bpmnElement="EndEvent_AccessActive">
         <dc:Bounds x="932" y="342" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="918" y="385" width="67" height="27" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
         <di:waypoint x="268" y="160" />

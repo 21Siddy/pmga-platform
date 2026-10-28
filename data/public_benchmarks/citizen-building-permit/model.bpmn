@@ -4,7 +4,7 @@
                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
                   id="Definitions_Building_Permit"
-                  targetNamespace="http://civicprocess.org/bpmn">
+                  targetNamespace="http://pmga.local/bpmn">
   <bpmn:collaboration id="Collaboration_2">
     <bpmn:participant id="Participant_Building" name="Citizen Building Permit Intake &amp; Field Workflow" processRef="Process_Building_Permit" />
   </bpmn:collaboration>

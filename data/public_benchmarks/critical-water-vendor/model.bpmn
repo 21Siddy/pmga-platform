@@ -4,7 +4,7 @@
                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
                   id="Definitions_Water_Vendor"
-                  targetNamespace="http://civicprocess.org/bpmn">
+                  targetNamespace="http://pmga.local/bpmn">
   <bpmn:collaboration id="Collaboration_3">
     <bpmn:participant id="Participant_Water" name="Municipal Water SCADA Remote Access" processRef="Process_Water_Vendor" />
   </bpmn:collaboration>

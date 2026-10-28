@@ -1,6 +1,6 @@
 /**
- * BPMN 2.0 Interactive Studio Module
- * Wraps bpmn-js Modeler in vanilla JS, providing zoom, save, and standard XML/SVG exports.
+ * PMGA BPMN Studio Module
+ * Wraps bpmn-js with box resizing (Point #7), custom dimensions, zoom, and exports.
  */
 
 class BPMNStudio {
@@ -8,6 +8,7 @@ class BPMNStudio {
     this.container = document.getElementById(canvasContainerId);
     this.modeler = null;
     this.currentXml = null;
+    this.selectedElement = null;
     this.initModeler();
   }
 
@@ -24,7 +25,17 @@ class BPMNStudio {
       }
     });
 
-    // Resize canvas smoothly on window resize
+    // Listen to selection events to update dimension inputs
+    this.modeler.on('selection.changed', (e) => {
+      const selection = e.newSelection;
+      if (selection && selection.length === 1) {
+        this.selectedElement = selection[0];
+        this.updateDimensionInputs(this.selectedElement);
+      } else {
+        this.selectedElement = null;
+      }
+    });
+
     window.addEventListener('resize', () => {
       if (this.modeler) {
         const canvas = this.modeler.get('canvas');
@@ -44,7 +55,7 @@ class BPMNStudio {
       canvas.zoom('fit-viewport');
       return result;
     } catch (err) {
-      console.error('Error importing BPMN XML into bpmn-js:', err);
+      console.error('Error importing BPMN XML:', err);
       throw err;
     }
   }
@@ -62,16 +73,40 @@ class BPMNStudio {
     return svg;
   }
 
-  highlightElements(elementIds, cssClass = 'bpmn-gap-highlight') {
-    if (!this.modeler) return;
-    const canvas = this.modeler.get('canvas');
-    elementIds.forEach(id => {
-      try {
-        canvas.addMarker(id, cssClass);
-      } catch (e) {
-        // Element might not exist in current view
-      }
-    });
+  // Paint-Style Box Resizing (Point #7)
+  resizeSelectedElement(width, height) {
+    if (!this.modeler || !this.selectedElement) return false;
+    const modeling = this.modeler.get('modeling');
+    if (!modeling) return false;
+
+    const el = this.selectedElement;
+    const currentBounds = el.businessObject && el.businessObject.di && el.businessObject.di.bounds
+      ? el.businessObject.di.bounds
+      : { x: el.x, y: el.y, width: el.width, height: el.height };
+
+    const newBounds = {
+      x: el.x,
+      y: el.y,
+      width: parseInt(width, 10),
+      height: parseInt(height, 10)
+    };
+
+    try {
+      modeling.resizeShape(el, newBounds);
+      return true;
+    } catch (err) {
+      console.warn('Resize failed on element type:', el.type, err);
+      return false;
+    }
+  }
+
+  updateDimensionInputs(element) {
+    const wInput = document.getElementById('node-width-input');
+    const hInput = document.getElementById('node-height-input');
+    if (wInput && hInput && element) {
+      wInput.value = Math.round(element.width);
+      hInput.value = Math.round(element.height);
+    }
   }
 }
 
