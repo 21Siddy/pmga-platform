@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  id="Def_12" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:process id="Proc_12" name="GDPR 72-Hour Data Breach Incident Workflow" isExecutable="false">
+    <bpmn:startEvent id="Start_Leak" name="Citizen Database Leak Discovered">
+      <bpmn:outgoing>F_12_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:parallelGateway id="Gateway_BreachSplit" name="Parallel Triage Actions">
+      <bpmn:incoming>F_12_1</bpmn:incoming>
+      <bpmn:outgoing>F_TriageDPO</bpmn:outgoing>
+      <bpmn:outgoing>F_TriageSec</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Task_AssessRisk" name="DPO Evaluates Severity of Rights and Freedoms">
+      <bpmn:incoming>F_TriageDPO</bpmn:incoming>
+      <bpmn:outgoing>F_DpoDone</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_ContainSource" name="Security Engineers Revoke Compromised API Token">
+      <bpmn:incoming>F_TriageSec</bpmn:incoming>
+      <bpmn:outgoing>F_SecDone</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:parallelGateway id="Gateway_BreachJoin" name="Triage Complete">
+      <bpmn:incoming>F_DpoDone</bpmn:incoming>
+      <bpmn:incoming>F_SecDone</bpmn:incoming>
+      <bpmn:outgoing>F_ToEval</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:exclusiveGateway id="Gateway_ReportXOR" name="High Risk to Citizens?">
+      <bpmn:incoming>F_ToEval</bpmn:incoming>
+      <bpmn:outgoing>F_NotifyAll</bpmn:outgoing>
+      <bpmn:outgoing>F_LogOnly</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_NotifyRegulator" name="File Official Report to Data Protection Authority and Email Affected Citizens">
+      <bpmn:incoming>F_NotifyAll</bpmn:incoming>
+      <bpmn:outgoing>F_DoneNotif</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_InternalRecord" name="Record Internal Breach Log in Incident Register">
+      <bpmn:incoming>F_LogOnly</bpmn:incoming>
+      <bpmn:outgoing>F_DoneLog</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_BreachClosed" name="Incident Regulatory Obligations Fulfilled">
+      <bpmn:incoming>F_DoneNotif</bpmn:incoming>
+      <bpmn:incoming>F_DoneLog</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_12_1" sourceRef="Start_Leak" targetRef="Gateway_BreachSplit" />
+    <bpmn:sequenceFlow id="F_TriageDPO" sourceRef="Gateway_BreachSplit" targetRef="Task_AssessRisk" />
+    <bpmn:sequenceFlow id="F_TriageSec" sourceRef="Gateway_BreachSplit" targetRef="Task_ContainSource" />
+    <bpmn:sequenceFlow id="F_DpoDone" sourceRef="Task_AssessRisk" targetRef="Gateway_BreachJoin" />
+    <bpmn:sequenceFlow id="F_SecDone" sourceRef="Task_ContainSource" targetRef="Gateway_BreachJoin" />
+    <bpmn:sequenceFlow id="F_ToEval" sourceRef="Gateway_BreachJoin" targetRef="Gateway_ReportXOR" />
+    <bpmn:sequenceFlow id="F_NotifyAll" name="Yes" sourceRef="Gateway_ReportXOR" targetRef="Task_NotifyRegulator" />
+    <bpmn:sequenceFlow id="F_LogOnly" name="No" sourceRef="Gateway_ReportXOR" targetRef="Task_InternalRecord" />
+    <bpmn:sequenceFlow id="F_DoneNotif" sourceRef="Task_NotifyRegulator" targetRef="End_BreachClosed" />
+    <bpmn:sequenceFlow id="F_DoneLog" sourceRef="Task_InternalRecord" targetRef="End_BreachClosed" />
+  </bpmn:process>
+</bpmn:definitions>

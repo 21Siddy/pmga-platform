@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  id="Def_11" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:process id="Proc_11" name="Industrial SCADA Vendor Maintenance" isExecutable="false">
+    <bpmn:startEvent id="Start_Alarm" name="Telemetry Pressure Spike Detected">
+      <bpmn:outgoing>F_11_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_AssessSeverity" name="Assess Pipeline Failure Probability">
+      <bpmn:incoming>F_11_1</bpmn:incoming>
+      <bpmn:outgoing>F_11_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_CritXOR" name="Critical Emergency?">
+      <bpmn:incoming>F_11_2</bpmn:incoming>
+      <bpmn:outgoing>F_EmergYes</bpmn:outgoing>
+      <bpmn:outgoing>F_EmergNo</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:parallelGateway id="Gateway_DualOpsAND" name="Emergency Dual Measures">
+      <bpmn:incoming>F_EmergYes</bpmn:incoming>
+      <bpmn:outgoing>F_EngageVendor</bpmn:outgoing>
+      <bpmn:outgoing>F_DivertFlow</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Task_RemoteFix" name="Connect External Vendor via Bastion Session">
+      <bpmn:incoming>F_EngageVendor</bpmn:incoming>
+      <bpmn:outgoing>F_JoinV</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_OpenBypassValve" name="Manually Open Secondary Pressure Bypass">
+      <bpmn:incoming>F_DivertFlow</bpmn:incoming>
+      <bpmn:outgoing>F_JoinP</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:parallelGateway id="Gateway_DualOpsJoin" name="Synchronize Stabilized State">
+      <bpmn:incoming>F_JoinV</bpmn:incoming>
+      <bpmn:incoming>F_JoinP</bpmn:incoming>
+      <bpmn:outgoing>F_MergedFix</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Task_RoutineService" name="Schedule Standard Daytime Maintenance Ticket">
+      <bpmn:incoming>F_EmergNo</bpmn:incoming>
+      <bpmn:outgoing>F_RoutineDone</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_WaterStable" name="Pressure Stabilized">
+      <bpmn:incoming>F_MergedFix</bpmn:incoming>
+      <bpmn:incoming>F_RoutineDone</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_11_1" sourceRef="Start_Alarm" targetRef="Task_AssessSeverity" />
+    <bpmn:sequenceFlow id="F_11_2" sourceRef="Task_AssessSeverity" targetRef="Gateway_CritXOR" />
+    <bpmn:sequenceFlow id="F_EmergYes" name="Critical" sourceRef="Gateway_CritXOR" targetRef="Gateway_DualOpsAND" />
+    <bpmn:sequenceFlow id="F_EmergNo" name="Minor" sourceRef="Gateway_CritXOR" targetRef="Task_RoutineService" />
+    <bpmn:sequenceFlow id="F_EngageVendor" sourceRef="Gateway_DualOpsAND" targetRef="Task_RemoteFix" />
+    <bpmn:sequenceFlow id="F_DivertFlow" sourceRef="Gateway_DualOpsAND" targetRef="Task_OpenBypassValve" />
+    <bpmn:sequenceFlow id="F_JoinV" sourceRef="Task_RemoteFix" targetRef="Gateway_DualOpsJoin" />
+    <bpmn:sequenceFlow id="F_JoinP" sourceRef="Task_OpenBypassValve" targetRef="Gateway_DualOpsJoin" />
+    <bpmn:sequenceFlow id="F_MergedFix" sourceRef="Gateway_DualOpsJoin" targetRef="End_WaterStable" />
+    <bpmn:sequenceFlow id="F_RoutineDone" sourceRef="Task_RoutineService" targetRef="End_WaterStable" />
+  </bpmn:process>
+</bpmn:definitions>

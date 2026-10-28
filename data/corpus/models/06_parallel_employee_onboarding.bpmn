@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  id="Def_06" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:process id="Proc_06" name="Parallel Departmental Employee Onboarding" isExecutable="false">
+    <bpmn:startEvent id="Start_Hire" name="Contract Signed">
+      <bpmn:outgoing>F_06_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:parallelGateway id="Gateway_SplitAND" name="Initiate Parallel Onboarding">
+      <bpmn:incoming>F_06_1</bpmn:incoming>
+      <bpmn:outgoing>F_ToIT</bpmn:outgoing>
+      <bpmn:outgoing>F_ToHR</bpmn:outgoing>
+      <bpmn:outgoing>F_ToFac</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Task_SetupIT" name="Provision Email and VPN Credentials">
+      <bpmn:incoming>F_ToIT</bpmn:incoming>
+      <bpmn:outgoing>F_JoinIT</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_SetupHR" name="Enroll in Health Insurance and Payroll">
+      <bpmn:incoming>F_ToHR</bpmn:incoming>
+      <bpmn:outgoing>F_JoinHR</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_SetupBadge" name="Program Building Access Smartcard">
+      <bpmn:incoming>F_ToFac</bpmn:incoming>
+      <bpmn:outgoing>F_JoinFac</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:parallelGateway id="Gateway_JoinAND" name="Synchronize Onboarding Steps">
+      <bpmn:incoming>F_JoinIT</bpmn:incoming>
+      <bpmn:incoming>F_JoinHR</bpmn:incoming>
+      <bpmn:incoming>F_JoinFac</bpmn:incoming>
+      <bpmn:outgoing>F_ToFinal</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Task_Orientation" name="Conduct First-Day Welcome Orientation">
+      <bpmn:incoming>F_ToFinal</bpmn:incoming>
+      <bpmn:outgoing>F_06_End</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_Onboarded" name="Employee Fully Active">
+      <bpmn:incoming>F_06_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_06_1" sourceRef="Start_Hire" targetRef="Gateway_SplitAND" />
+    <bpmn:sequenceFlow id="F_ToIT" sourceRef="Gateway_SplitAND" targetRef="Task_SetupIT" />
+    <bpmn:sequenceFlow id="F_ToHR" sourceRef="Gateway_SplitAND" targetRef="Task_SetupHR" />
+    <bpmn:sequenceFlow id="F_ToFac" sourceRef="Gateway_SplitAND" targetRef="Task_SetupBadge" />
+    <bpmn:sequenceFlow id="F_JoinIT" sourceRef="Task_SetupIT" targetRef="Gateway_JoinAND" />
+    <bpmn:sequenceFlow id="F_JoinHR" sourceRef="Task_SetupHR" targetRef="Gateway_JoinAND" />
+    <bpmn:sequenceFlow id="F_JoinFac" sourceRef="Task_SetupBadge" targetRef="Gateway_JoinAND" />
+    <bpmn:sequenceFlow id="F_ToFinal" sourceRef="Gateway_JoinAND" targetRef="Task_Orientation" />
+    <bpmn:sequenceFlow id="F_06_End" sourceRef="Task_Orientation" targetRef="End_Onboarded" />
+  </bpmn:process>
+</bpmn:definitions>

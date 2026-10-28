@@ -83,6 +83,38 @@
         </div>
       </div>
 
+      <!-- Ground-Truth Corpus & Linguistic Style Testing (Matei et al. / Lê et al.) -->
+      <div class="benchmark-box corpus-box" style="margin-top: 1rem; border-color: #3b82f6;">
+        <div class="benchmark-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+          <div>
+            <span class="badge-accent" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">GROUND-TRUTH CORPUS &amp; BENCHMARK TESTING</span>
+            <h3 style="margin: 0.25rem 0 0 0;">12 Structural Archetypes &amp; Matei et al. (2026) 4-Style Generator</h3>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <select id="select-corpus-model" class="civic-select" style="min-width: 240px; font-size: 0.82rem;">
+              <option value="">-- Choose Ground-Truth Archetype --</option>
+            </select>
+            <select id="select-corpus-style" class="civic-select" style="font-size: 0.82rem;">
+              <option value="formal">1. Formal English</option>
+              <option value="shorthand">2. Messy Shorthand (-&gt;)</option>
+              <option value="out_of_order">3. Out-of-Order Sentences</option>
+              <option value="parallel_and_loop">4. Concurrency &amp; Loops</option>
+            </select>
+            <button id="btn-load-corpus-style" class="pill-btn secondary" style="font-size: 0.82rem; padding: 0.4rem 0.8rem;">
+              Load Style into Notes
+            </button>
+            <button id="btn-load-corpus-bpmn" class="pill-btn secondary" style="font-size: 0.82rem; padding: 0.4rem 0.8rem;">
+              View Ground-Truth Diagram &rarr;
+            </button>
+          </div>
+        </div>
+        <div id="corpus-model-info" style="font-size: 0.8rem; color: #64748b; margin-top: 0.5rem; display: none;">
+          <span id="corpus-archetype-tag" style="font-weight: 600; color: #1e293b;"></span> &bull; 
+          <span id="corpus-ref-tag"></span> &bull; 
+          Nodes: <span id="corpus-nodes-count"></span>, Edges: <span id="corpus-edges-count"></span>
+        </div>
+      </div>
+
       <div class="intake-split-grid">
         <!-- Panel A: Operational Reality -->
         <div class="intake-card reality-card">
@@ -93,8 +125,8 @@
           
           <div class="file-upload-row">
             <label class="file-label">
-              <span>Upload Notes / Journal</span>
-              <input type="file" id="file-actual-process" accept=".pdf,.docx,.txt,.md">
+              <span>Upload Notes / Handbook / .bpmn XML</span>
+              <input type="file" id="file-actual-process" accept=".pdf,.docx,.txt,.md,.bpmn,.xml">
             </label>
             <span id="file-actual-name" class="uploaded-filename">No file chosen</span>
           </div>

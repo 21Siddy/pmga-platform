@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  id="Def_04" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:process id="Proc_04" name="Building Permit Structural Triage" isExecutable="false">
+    <bpmn:startEvent id="Start_Permit" name="Blueprint Submitted">
+      <bpmn:outgoing>F_04_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_Triage" name="Inspect Cadastral Plot Boundary">
+      <bpmn:incoming>F_04_1</bpmn:incoming>
+      <bpmn:outgoing>F_04_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_CommercialXOR" name="Commercial Project?">
+      <bpmn:incoming>F_04_2</bpmn:incoming>
+      <bpmn:outgoing>F_CommYes</bpmn:outgoing>
+      <bpmn:outgoing>F_CommNo</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_FireMarshal" name="Conduct Fire Marshal Hearing">
+      <bpmn:incoming>F_CommYes</bpmn:incoming>
+      <bpmn:outgoing>F_04_3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_StandardReview" name="Standard Administrative Review">
+      <bpmn:incoming>F_CommNo</bpmn:incoming>
+      <bpmn:outgoing>F_04_4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_PermitDone" name="Permit Decision Issued">
+      <bpmn:incoming>F_04_3</bpmn:incoming>
+      <bpmn:incoming>F_04_4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_04_1" sourceRef="Start_Permit" targetRef="Task_Triage" />
+    <bpmn:sequenceFlow id="F_04_2" sourceRef="Task_Triage" targetRef="Gateway_CommercialXOR" />
+    <bpmn:sequenceFlow id="F_CommYes" name="Yes" sourceRef="Gateway_CommercialXOR" targetRef="Task_FireMarshal" />
+    <bpmn:sequenceFlow id="F_CommNo" name="No" sourceRef="Gateway_CommercialXOR" targetRef="Task_StandardReview" />
+    <bpmn:sequenceFlow id="F_04_3" sourceRef="Task_FireMarshal" targetRef="End_PermitDone" />
+    <bpmn:sequenceFlow id="F_04_4" sourceRef="Task_StandardReview" targetRef="End_PermitDone" />
+  </bpmn:process>
+</bpmn:definitions>

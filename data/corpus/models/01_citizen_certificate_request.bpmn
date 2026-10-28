@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Def_01" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:collaboration id="Collab_01">
+    <bpmn:participant id="Part_01" name="Citizen Birth Certificate Issuance" processRef="Proc_01" />
+  </bpmn:collaboration>
+  <bpmn:process id="Proc_01" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_01">
+      <bpmn:lane id="Lane_Citizen" name="Citizen">
+        <bpmn:flowNodeRef>Start_CitizenApp</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_SubmitForm</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Clerk" name="Front Desk Clerk">
+        <bpmn:flowNodeRef>Task_VerifyID</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Archivist" name="Municipal Archivist">
+        <bpmn:flowNodeRef>Task_PrintCertificate</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_CertificateIssued</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_CitizenApp" name="Citizen Needs Certificate">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_SubmitForm" name="Submit Identity Request and Fee">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_VerifyID" name="Verify Citizen Identity and Ledger Entry">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_PrintCertificate" name="Print Official Stamped Certificate">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_CertificateIssued" name="Certificate Delivered to Citizen">
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start_CitizenApp" targetRef="Task_SubmitForm" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_SubmitForm" targetRef="Task_VerifyID" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_VerifyID" targetRef="Task_PrintCertificate" />
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_PrintCertificate" targetRef="End_CertificateIssued" />
+  </bpmn:process>
+</bpmn:definitions>

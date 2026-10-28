@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Def_03" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:collaboration id="Collab_03">
+    <bpmn:participant id="Part_03" name="Vendor Invoice Approval Flow" processRef="Proc_03" />
+  </bpmn:collaboration>
+  <bpmn:process id="Proc_03" isExecutable="false">
+    <bpmn:startEvent id="Start_Invoice" name="Invoice Received">
+      <bpmn:outgoing>F_03_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_CheckAmount" name="Verify Invoice Line Items">
+      <bpmn:incoming>F_03_1</bpmn:incoming>
+      <bpmn:outgoing>F_03_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_AmountXOR" name="Amount &gt; 5000 EUR?">
+      <bpmn:incoming>F_03_2</bpmn:incoming>
+      <bpmn:outgoing>F_YesMgr</bpmn:outgoing>
+      <bpmn:outgoing>F_NoAuto</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_ManagerSign" name="Obtain Department Head Signature">
+      <bpmn:incoming>F_YesMgr</bpmn:incoming>
+      <bpmn:outgoing>F_03_3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_ExecutePayment" name="Execute Bank Wire Transfer">
+      <bpmn:incoming>F_NoAuto</bpmn:incoming>
+      <bpmn:incoming>F_03_3</bpmn:incoming>
+      <bpmn:outgoing>F_03_4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_Paid" name="Payment Settled">
+      <bpmn:incoming>F_03_4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_03_1" sourceRef="Start_Invoice" targetRef="Task_CheckAmount" />
+    <bpmn:sequenceFlow id="F_03_2" sourceRef="Task_CheckAmount" targetRef="Gateway_AmountXOR" />
+    <bpmn:sequenceFlow id="F_YesMgr" name="Yes" sourceRef="Gateway_AmountXOR" targetRef="Task_ManagerSign" />
+    <bpmn:sequenceFlow id="F_NoAuto" name="No" sourceRef="Gateway_AmountXOR" targetRef="Task_ExecutePayment" />
+    <bpmn:sequenceFlow id="F_03_3" sourceRef="Task_ManagerSign" targetRef="Task_ExecutePayment" />
+    <bpmn:sequenceFlow id="F_03_4" sourceRef="Task_ExecutePayment" targetRef="End_Paid" />
+  </bpmn:process>
+</bpmn:definitions>

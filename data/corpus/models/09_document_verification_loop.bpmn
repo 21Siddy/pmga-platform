@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  id="Def_09" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:process id="Proc_09" name="Application Completeness Check and Rework Loop" isExecutable="false">
+    <bpmn:startEvent id="Start_Filing" name="Citizen Submits Application">
+      <bpmn:outgoing>F_09_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_CheckDocs" name="Review Attached Identification Documents">
+      <bpmn:incoming>F_09_1</bpmn:incoming>
+      <bpmn:incoming>F_ReworkLoop</bpmn:incoming>
+      <bpmn:outgoing>F_09_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_CompleteXOR" name="Documents Valid?">
+      <bpmn:incoming>F_09_2</bpmn:incoming>
+      <bpmn:outgoing>F_ValidYes</bpmn:outgoing>
+      <bpmn:outgoing>F_ValidNo</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_RequestCorrection" name="Issue Defect Notice and Request Correction">
+      <bpmn:incoming>F_ValidNo</bpmn:incoming>
+      <bpmn:outgoing>F_ReworkLoop</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_ApproveFiling" name="Grant Final Stamp of Official Approval">
+      <bpmn:incoming>F_ValidYes</bpmn:incoming>
+      <bpmn:outgoing>F_09_End</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_Permitted" name="Filing Completed">
+      <bpmn:incoming>F_09_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_09_1" sourceRef="Start_Filing" targetRef="Task_CheckDocs" />
+    <bpmn:sequenceFlow id="F_09_2" sourceRef="Task_CheckDocs" targetRef="Gateway_CompleteXOR" />
+    <bpmn:sequenceFlow id="F_ValidNo" name="Defective" sourceRef="Gateway_CompleteXOR" targetRef="Task_RequestCorrection" />
+    <bpmn:sequenceFlow id="F_ReworkLoop" sourceRef="Task_RequestCorrection" targetRef="Task_CheckDocs" />
+    <bpmn:sequenceFlow id="F_ValidYes" name="Valid" sourceRef="Gateway_CompleteXOR" targetRef="Task_ApproveFiling" />
+    <bpmn:sequenceFlow id="F_09_End" sourceRef="Task_ApproveFiling" targetRef="End_Permitted" />
+  </bpmn:process>
+</bpmn:definitions>

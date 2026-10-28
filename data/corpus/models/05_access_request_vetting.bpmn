@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  id="Def_05" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:process id="Proc_05" name="Privileged Role Request Vetting" isExecutable="false">
+    <bpmn:startEvent id="Start_Req" name="Access Ticket Logged">
+      <bpmn:outgoing>F_05_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:exclusiveGateway id="Gateway_AdminXOR" name="Root Access Needed?">
+      <bpmn:incoming>F_05_1</bpmn:incoming>
+      <bpmn:outgoing>F_AdminYes</bpmn:outgoing>
+      <bpmn:outgoing>F_AdminNo</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_DPOSignoff" name="Require Written DPO Sign-Off">
+      <bpmn:incoming>F_AdminYes</bpmn:incoming>
+      <bpmn:outgoing>F_05_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_ProvisionRole" name="Add User to Target Active Directory Role">
+      <bpmn:incoming>F_AdminNo</bpmn:incoming>
+      <bpmn:incoming>F_05_2</bpmn:incoming>
+      <bpmn:outgoing>F_05_3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_AccessGranted" name="Credentials Active">
+      <bpmn:incoming>F_05_3</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_05_1" sourceRef="Start_Req" targetRef="Gateway_AdminXOR" />
+    <bpmn:sequenceFlow id="F_AdminYes" name="Yes" sourceRef="Gateway_AdminXOR" targetRef="Task_DPOSignoff" />
+    <bpmn:sequenceFlow id="F_AdminNo" name="No" sourceRef="Gateway_AdminXOR" targetRef="Task_ProvisionRole" />
+    <bpmn:sequenceFlow id="F_05_2" sourceRef="Task_DPOSignoff" targetRef="Task_ProvisionRole" />
+    <bpmn:sequenceFlow id="F_05_3" sourceRef="Task_ProvisionRole" targetRef="End_AccessGranted" />
+  </bpmn:process>
+</bpmn:definitions>

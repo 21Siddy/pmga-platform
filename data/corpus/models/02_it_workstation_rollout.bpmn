@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Def_02" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:collaboration id="Collab_02">
+    <bpmn:participant id="Part_02" name="Standard Workstation Provisioning" processRef="Proc_02" />
+  </bpmn:collaboration>
+  <bpmn:process id="Proc_02" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_02">
+      <bpmn:lane id="Lane_HR" name="Human Resources">
+        <bpmn:flowNodeRef>Start_NewHire</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_NotifyIT</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_IT" name="IT Operations">
+        <bpmn:flowNodeRef>Task_ImageLaptop</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_DeliverLaptop</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>End_WorkstationReady</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="Start_NewHire" name="New Employee Scheduled">
+      <bpmn:outgoing>Flow_02_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_NotifyIT" name="Send Onboarding Hardware Ticket">
+      <bpmn:incoming>Flow_02_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_02_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_ImageLaptop" name="Install Hardened OS and Security Suite">
+      <bpmn:incoming>Flow_02_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_02_3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_DeliverLaptop" name="Hand Over Laptop and Sign Receipt">
+      <bpmn:incoming>Flow_02_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_02_4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_WorkstationReady" name="Laptop Operational">
+      <bpmn:incoming>Flow_02_4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_02_1" sourceRef="Start_NewHire" targetRef="Task_NotifyIT" />
+    <bpmn:sequenceFlow id="Flow_02_2" sourceRef="Task_NotifyIT" targetRef="Task_ImageLaptop" />
+    <bpmn:sequenceFlow id="Flow_02_3" sourceRef="Task_ImageLaptop" targetRef="Task_DeliverLaptop" />
+    <bpmn:sequenceFlow id="Flow_02_4" sourceRef="Task_DeliverLaptop" targetRef="End_WorkstationReady" />
+  </bpmn:process>
+</bpmn:definitions>

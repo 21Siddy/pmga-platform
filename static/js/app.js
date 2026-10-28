@@ -25,6 +25,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const chkSaveLocal = document.getElementById('chk-save-local');
 
   const benchmarksList = document.getElementById('benchmarks-list');
+  const selectCorpusModel = document.getElementById('select-corpus-model');
+  const selectCorpusStyle = document.getElementById('select-corpus-style');
+  const btnLoadCorpusStyle = document.getElementById('btn-load-corpus-style');
+  const btnLoadCorpusBpmn = document.getElementById('btn-load-corpus-bpmn');
+  const corpusModelInfo = document.getElementById('corpus-model-info');
+  const corpusArchetypeTag = document.getElementById('corpus-archetype-tag');
+  const corpusRefTag = document.getElementById('corpus-ref-tag');
+  const corpusNodesCount = document.getElementById('corpus-nodes-count');
+  const corpusEdgesCount = document.getElementById('corpus-edges-count');
+  let cachedCorpusManifest = [];
+
   const inputActual = document.getElementById('input-actual-process');
   const inputFormal = document.getElementById('input-formal-policy');
   const fileActual = document.getElementById('file-actual-process');
@@ -234,7 +245,77 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // --- 5. Free-Text File Uploads ---
+  // --- 4b. Ground-Truth Corpus Workbench (12 Models & Matei et al. 4 Styles) ---
+  async function loadCorpusWorkbench() {
+    try {
+      cachedCorpusManifest = await API.getCorpusManifest();
+      selectCorpusModel.innerHTML = '<option value="">-- Choose Ground-Truth Archetype (12 Models) --</option>' +
+        cachedCorpusManifest.map(m => `<option value="${m.id}">[${m.archetype}] ${m.title}</option>`).join('');
+
+      selectCorpusModel.addEventListener('change', () => {
+        const m = cachedCorpusManifest.find(item => item.id === selectCorpusModel.value);
+        if (m) {
+          corpusArchetypeTag.textContent = m.archetype;
+          corpusRefTag.textContent = m.reference;
+          corpusNodesCount.textContent = m.node_count;
+          corpusEdgesCount.textContent = m.edge_count;
+          corpusModelInfo.style.display = 'block';
+        } else {
+          corpusModelInfo.style.display = 'none';
+        }
+      });
+
+      btnLoadCorpusStyle.addEventListener('click', async () => {
+        const modelId = selectCorpusModel.value;
+        if (!modelId) {
+          alert('Please select a Ground-Truth Model from the dropdown first.');
+          return;
+        }
+        const styleKey = selectCorpusStyle.value;
+        btnLoadCorpusStyle.textContent = 'Loading...';
+        try {
+          const detail = await API.getCorpusModel(modelId);
+          const styleText = detail.text_styles[styleKey] || detail.text_styles.formal;
+          inputActual.value = styleText;
+          inputFormal.value = `# FORMAL REFERENCE STANDARD (${detail.title})\nStandard / Regulation: ${detail.reference}\nArchetype: ${detail.archetype}\nGround-Truth Element Constraints: Exactly ${detail.graph.nodes.length} nodes, ${detail.graph.edges.length} edges.`;
+        } catch (e) {
+          alert('Failed to load model style: ' + e.message);
+        } finally {
+          btnLoadCorpusStyle.textContent = 'Load Style into Notes';
+        }
+      });
+
+      btnLoadCorpusBpmn.addEventListener('click', async () => {
+        const modelId = selectCorpusModel.value;
+        if (!modelId) {
+          alert('Please select a Ground-Truth Model from the dropdown first.');
+          return;
+        }
+        btnLoadCorpusBpmn.textContent = 'Loading Canvas...';
+        try {
+          const detail = await API.getCorpusModel(modelId);
+          if (!activeProjectId) {
+            const proj = await API.createProject(`Corpus Ground-Truth: ${detail.title}`);
+            await refreshProjects(proj.id);
+          }
+          await API.saveBPMN(activeProjectId, detail.bpmn_xml);
+          if (bpmnStudio) {
+            await bpmnStudio.loadXML(detail.bpmn_xml);
+          }
+          document.getElementById('bpmn-canvas-title').textContent = `${detail.title} (Ground Truth G*)`;
+          switchTab('tab-bpmn');
+        } catch (e) {
+          alert('Failed to load Ground-Truth BPMN: ' + e.message);
+        } finally {
+          btnLoadCorpusBpmn.textContent = 'View Ground-Truth Diagram \u2192';
+        }
+      });
+    } catch (e) {
+      console.error('Failed to load corpus manifest:', e);
+    }
+  }
+
+  // --- 5. Free-Text and BPMN XML File Uploads ---
   fileActual.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -243,6 +324,26 @@ document.addEventListener('DOMContentLoaded', async () => {
       const proj = await API.createProject(`Assessment: ${file.name}`);
       await refreshProjects(proj.id);
     }
+
+    if (file.name.endsWith('.bpmn') || file.name.endsWith('.xml')) {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const xmlText = ev.target.result;
+        try {
+          const res = await API.parseExternalBPMN(xmlText, file.name);
+          inputActual.value = res.text_styles.shorthand || res.text_styles.formal;
+          await API.saveBPMN(activeProjectId, xmlText);
+          if (bpmnStudio) await bpmnStudio.loadXML(xmlText);
+          document.getElementById('bpmn-canvas-title').textContent = `${res.title} (Parsed from .bpmn)`;
+          switchTab('tab-bpmn');
+        } catch (err) {
+          alert('Failed to parse uploaded BPMN XML: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+      return;
+    }
+
     const res = await API.uploadDocument(activeProjectId, 'ACTUAL_PROCESS', file);
     inputActual.value = res.pii_report.has_pii ? res.pii_report.redacted_text : inputActual.value;
   });
@@ -498,5 +599,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   await updateLlmStatus();
   await refreshProjects();
   await loadBenchmarks();
+  await loadCorpusWorkbench();
   await loadIsoControls();
 });

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  id="Def_10" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:process id="Proc_10" name="IT Change Security Testing Loop" isExecutable="false">
+    <bpmn:startEvent id="Start_Change" name="Patch Prepared by Developers">
+      <bpmn:outgoing>F_10_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_RunScan" name="Deploy to Staging and Execute SAST Vulnerability Scan">
+      <bpmn:incoming>F_10_1</bpmn:incoming>
+      <bpmn:incoming>F_FixLoop</bpmn:incoming>
+      <bpmn:outgoing>F_10_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_ScanXOR" name="High CVEs Found?">
+      <bpmn:incoming>F_10_2</bpmn:incoming>
+      <bpmn:outgoing>F_CveYes</bpmn:outgoing>
+      <bpmn:outgoing>F_CveNo</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_RemediateBug" name="Remediate Insecure Code and Recompile">
+      <bpmn:incoming>F_CveYes</bpmn:incoming>
+      <bpmn:outgoing>F_FixLoop</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_PromoteProd" name="Promote Patch to Production Cluster">
+      <bpmn:incoming>F_CveNo</bpmn:incoming>
+      <bpmn:outgoing>F_10_End</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_Live" name="Patch Live in Production">
+      <bpmn:incoming>F_10_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_10_1" sourceRef="Start_Change" targetRef="Task_RunScan" />
+    <bpmn:sequenceFlow id="F_10_2" sourceRef="Task_RunScan" targetRef="Gateway_ScanXOR" />
+    <bpmn:sequenceFlow id="F_CveYes" name="Yes" sourceRef="Gateway_ScanXOR" targetRef="Task_RemediateBug" />
+    <bpmn:sequenceFlow id="F_FixLoop" sourceRef="Task_RemediateBug" targetRef="Task_RunScan" />
+    <bpmn:sequenceFlow id="F_CveNo" name="Clean" sourceRef="Gateway_ScanXOR" targetRef="Task_PromoteProd" />
+    <bpmn:sequenceFlow id="F_10_End" sourceRef="Task_PromoteProd" targetRef="End_Live" />
+  </bpmn:process>
+</bpmn:definitions>

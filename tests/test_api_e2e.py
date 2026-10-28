@@ -58,3 +58,49 @@ def test_load_benchmark_and_run_analysis_flow():
     # Verify project is expunged
     res_check = client.get(f"/api/v1/projects/{proj_id}")
     assert res_check.status_code == 404
+
+def test_corpus_manifest_and_detail_endpoints():
+    # 1. Fetch corpus manifest
+    res = client.get("/api/v1/corpus")
+    assert res.status_code == 200
+    manifest = res.json()
+    assert len(manifest) == 12
+    first_id = manifest[0]["id"]
+
+    # 2. Fetch single model detail with 4 text styles
+    res_detail = client.get(f"/api/v1/corpus/{first_id}")
+    assert res_detail.status_code == 200
+    detail = res_detail.json()
+    assert detail["id"] == first_id
+    assert "bpmn_xml" in detail
+    assert "graph" in detail
+    assert "text_styles" in detail
+    assert "formal" in detail["text_styles"]
+    assert "shorthand" in detail["text_styles"]
+
+def test_corpus_parse_and_evaluate_endpoints():
+    # 1. Get model 06 (parallel onboarding)
+    res_detail = client.get("/api/v1/corpus/06_parallel_employee_onboarding")
+    assert res_detail.status_code == 200
+    data = res_detail.json()
+
+    # 2. Parse BPMN XML via parse-bpmn endpoint
+    res_parse = client.post("/api/v1/corpus/parse-bpmn", json={"bpmn_xml": data["bpmn_xml"]})
+    assert res_parse.status_code == 200
+    parsed = res_parse.json()
+    assert parsed["node_count"] >= 7
+    assert len(parsed["text_styles"]["parallel_and_loop"]) > 10
+
+    # 3. Evaluate exact match
+    res_eval = client.post(
+        "/api/v1/corpus/evaluate",
+        json={
+            "ground_truth_model_id": "06_parallel_employee_onboarding",
+            "predicted_graph": parsed["graph"]
+        }
+    )
+    assert res_eval.status_code == 200
+    eval_res = res_eval.json()
+    assert eval_res["total_reconstruction_score"] == 1.0
+    assert eval_res["gateway_accuracy"] == 1.0
+

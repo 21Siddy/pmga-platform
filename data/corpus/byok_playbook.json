@@ -1,0 +1,110 @@
+{
+  "version": "1.0.0",
+  "description": "PMGA BYOK Playbook: Deterministic few-shot examples and structural rules to guide BYOK models (Gemini 3.8 Flash, Mistral Small 4) on challenging BPMN archetypes without fine-tuning.",
+  "archetype_rules": {
+    "out_of_order": {
+      "detection_keywords": ["before", "prior to", "only after", "precedes", "earlier", "previously", "once completed earlier"],
+      "rule": "Temporal Inversion Rule: Non-chronological narration must be re-ordered by prerequisite. If text states 'Before task B is performed, actor must conduct task A', the sequence flow must strictly be Task A -> Task B.",
+      "few_shot": {
+        "input_text": "Before the department supervisor signs off on the permit, the clerk must verify the land deed. Archival in the central registry happens only after supervisor sign-off.",
+        "graph": {
+          "process_title": "Land Deed Permitting",
+          "lanes": ["Front Desk Clerk", "Supervisor", "Central Registry"],
+          "nodes": [
+            {"id": "Start_1", "name": "Application Received", "type": "startEvent", "lane": "Front Desk Clerk"},
+            {"id": "Task_Verify", "name": "Verify Land Deed", "type": "userTask", "lane": "Front Desk Clerk"},
+            {"id": "Task_SignOff", "name": "Supervisor Permit Sign-off", "type": "userTask", "lane": "Supervisor"},
+            {"id": "Task_Archive", "name": "Archive in Central Registry", "type": "userTask", "lane": "Central Registry"},
+            {"id": "End_1", "name": "Permit Archived", "type": "endEvent", "lane": "Central Registry"}
+          ],
+          "edges": [
+            {"id": "F1", "sourceRef": "Start_1", "targetRef": "Task_Verify"},
+            {"id": "F2", "sourceRef": "Task_Verify", "targetRef": "Task_SignOff"},
+            {"id": "F3", "sourceRef": "Task_SignOff", "targetRef": "Task_Archive"},
+            {"id": "F4", "sourceRef": "Task_Archive", "targetRef": "End_1"}
+          ]
+        }
+      }
+    },
+    "parallel_and_loops": {
+      "detection_keywords": ["simultaneously", "at the same time", "in parallel", "meanwhile", "both ... and", "concurrently", "repeat", "until approved", "resubmit", "send back for revision"],
+      "rule": "Parallel Split/Join and Rework Rule: Concurrent activities must branch from a parallelGateway (split) and converge into a parallelGateway (join). Cyclic rework must route a sequenceFlow from an exclusiveGateway back to the upstream editing task.",
+      "few_shot": {
+        "input_text": "Once the onboarding ticket is created, IT configures the workstation while HR simultaneously prepares the contract. After both complete, orientation begins.",
+        "graph": {
+          "process_title": "Employee Onboarding Parallel Flow",
+          "lanes": ["HR Specialist", "IT Admin"],
+          "nodes": [
+            {"id": "Start_1", "name": "Onboarding Initiated", "type": "startEvent", "lane": "HR Specialist"},
+            {"id": "Gate_Split", "name": "Split Workstreams", "type": "parallelGateway", "lane": "HR Specialist"},
+            {"id": "Task_IT", "name": "Configure Workstation and Accounts", "type": "userTask", "lane": "IT Admin"},
+            {"id": "Task_HR", "name": "Prepare Employment Contract", "type": "userTask", "lane": "HR Specialist"},
+            {"id": "Gate_Join", "name": "Synchronize Completion", "type": "parallelGateway", "lane": "HR Specialist"},
+            {"id": "Task_Orient", "name": "Conduct First-Day Orientation", "type": "userTask", "lane": "HR Specialist"},
+            {"id": "End_1", "name": "Onboarding Complete", "type": "endEvent", "lane": "HR Specialist"}
+          ],
+          "edges": [
+            {"id": "F1", "sourceRef": "Start_1", "targetRef": "Gate_Split"},
+            {"id": "F2", "sourceRef": "Gate_Split", "targetRef": "Task_IT"},
+            {"id": "F3", "sourceRef": "Gate_Split", "targetRef": "Task_HR"},
+            {"id": "F4", "sourceRef": "Task_IT", "targetRef": "Gate_Join"},
+            {"id": "F5", "sourceRef": "Task_HR", "targetRef": "Gate_Join"},
+            {"id": "F6", "sourceRef": "Gate_Join", "targetRef": "Task_Orient"},
+            {"id": "F7", "sourceRef": "Task_Orient", "targetRef": "End_1"}
+          ]
+        }
+      }
+    },
+    "shorthand": {
+      "detection_keywords": ["->", "=>", ";", "clerk:", "it:", "sec:", "admin:", "staff:"],
+      "rule": "Shorthand & Telegraphic Parsing Rule: Break notes across delimiter symbols (->, =>, bullets). Extract role from prefix before colon (e.g. 'clerk: verify'). Omit conversational filler.",
+      "few_shot": {
+        "input_text": "clerk: check id -> it: create vpn token -> supervisor: confirm setup",
+        "graph": {
+          "process_title": "Quick VPN Setup",
+          "lanes": ["Front Desk Clerk", "IT Support", "Supervisor"],
+          "nodes": [
+            {"id": "Start_1", "name": "VPN Request Logged", "type": "startEvent", "lane": "Front Desk Clerk"},
+            {"id": "Task_ID", "name": "Check Identity Documents", "type": "userTask", "lane": "Front Desk Clerk"},
+            {"id": "Task_VPN", "name": "Create VPN Token", "type": "userTask", "lane": "IT Support"},
+            {"id": "Task_Confirm", "name": "Confirm Setup Authorization", "type": "userTask", "lane": "Supervisor"},
+            {"id": "End_1", "name": "Access Granted", "type": "endEvent", "lane": "Supervisor"}
+          ],
+          "edges": [
+            {"id": "F1", "sourceRef": "Start_1", "targetRef": "Task_ID"},
+            {"id": "F2", "sourceRef": "Task_ID", "targetRef": "Task_VPN"},
+            {"id": "F3", "sourceRef": "Task_VPN", "targetRef": "Task_Confirm"},
+            {"id": "F4", "sourceRef": "Task_Confirm", "targetRef": "End_1"}
+          ]
+        }
+      }
+    },
+    "exclusive_xor": {
+      "detection_keywords": ["if", "whether", "depending on", "in case of", "either", "or", "approved", "rejected"],
+      "rule": "Exclusive Gateway (XOR) Rule: Conditional decision logic must be modeled using an exclusiveGateway node with distinct condition names (e.g. 'Approved', 'Rejected') on each outgoing edge.",
+      "few_shot": {
+        "input_text": "Clerk inspects the invoice. If amount is over 1000 euros, the director must approve it. Otherwise, auto-pay via accounting.",
+        "graph": {
+          "process_title": "Invoice Triage",
+          "lanes": ["Clerk", "Director", "Accounting"],
+          "nodes": [
+            {"id": "Start_1", "name": "Invoice Received", "type": "startEvent", "lane": "Clerk"},
+            {"id": "Task_Inspect", "name": "Inspect Invoice Amount", "type": "userTask", "lane": "Clerk"},
+            {"id": "Gate_XOR", "name": "Amount > 1000 EUR?", "type": "exclusiveGateway", "lane": "Clerk"},
+            {"id": "Task_Director", "name": "Director Review and Approval", "type": "userTask", "lane": "Director"},
+            {"id": "Task_AutoPay", "name": "Execute Direct Payment", "type": "serviceTask", "lane": "Accounting"},
+            {"id": "End_1", "name": "Payment Dispatched", "type": "endEvent", "lane": "Accounting"}
+          ],
+          "edges": [
+            {"id": "F1", "sourceRef": "Start_1", "targetRef": "Task_Inspect"},
+            {"id": "F2", "sourceRef": "Task_Inspect", "targetRef": "Gate_XOR"},
+            {"id": "F3", "sourceRef": "Gate_XOR", "targetRef": "Task_Director", "name": "> 1000 EUR"},
+            {"id": "F4", "sourceRef": "Gate_XOR", "targetRef": "Task_AutoPay", "name": "<= 1000 EUR"},
+            {"id": "F5", "sourceRef": "Task_Director", "targetRef": "Task_AutoPay"},
+            {"id": "F6", "sourceRef": "Task_AutoPay", "targetRef": "End_1"}
+          ]
+        }
+      }
+    }
+  }
+}

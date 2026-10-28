@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  id="Def_08" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:process id="Proc_08" name="Vendor Contract Dual-Review Gate" isExecutable="false">
+    <bpmn:startEvent id="Start_Tender" name="Vendor Bid Received">
+      <bpmn:outgoing>F_08_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:parallelGateway id="Gateway_ReviewSplit" name="Concurrent Departmental Reviews">
+      <bpmn:incoming>F_08_1</bpmn:incoming>
+      <bpmn:outgoing>F_Legal</bpmn:outgoing>
+      <bpmn:outgoing>F_Security</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Task_LegalReview" name="Audit GDPR Art 28 Data Processing Terms">
+      <bpmn:incoming>F_Legal</bpmn:incoming>
+      <bpmn:outgoing>F_LegalDone</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_SecurityReview" name="Verify ISO 27001 SOC2 Certification">
+      <bpmn:incoming>F_Security</bpmn:incoming>
+      <bpmn:outgoing>F_SecDone</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:parallelGateway id="Gateway_ReviewJoin" name="Dual-Signoff Synchronized">
+      <bpmn:incoming>F_LegalDone</bpmn:incoming>
+      <bpmn:incoming>F_SecDone</bpmn:incoming>
+      <bpmn:outgoing>F_ToAward</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Task_SignContract" name="Execute Public Procurement Agreement">
+      <bpmn:incoming>F_ToAward</bpmn:incoming>
+      <bpmn:outgoing>F_08_End</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_Awarded" name="Vendor Onboarded">
+      <bpmn:incoming>F_08_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_08_1" sourceRef="Start_Tender" targetRef="Gateway_ReviewSplit" />
+    <bpmn:sequenceFlow id="F_Legal" sourceRef="Gateway_ReviewSplit" targetRef="Task_LegalReview" />
+    <bpmn:sequenceFlow id="F_Security" sourceRef="Gateway_ReviewSplit" targetRef="Task_SecurityReview" />
+    <bpmn:sequenceFlow id="F_LegalDone" sourceRef="Task_LegalReview" targetRef="Gateway_ReviewJoin" />
+    <bpmn:sequenceFlow id="F_SecDone" sourceRef="Task_SecurityReview" targetRef="Gateway_ReviewJoin" />
+    <bpmn:sequenceFlow id="F_ToAward" sourceRef="Gateway_ReviewJoin" targetRef="Task_SignContract" />
+    <bpmn:sequenceFlow id="F_08_End" sourceRef="Task_SignContract" targetRef="End_Awarded" />
+  </bpmn:process>
+</bpmn:definitions>

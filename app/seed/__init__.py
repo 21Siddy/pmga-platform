@@ -2,12 +2,14 @@ import os
 from app.config import settings
 from app.seed.iso_27002_catalog import build_iso_excel
 from app.seed.benchmark_catalog import save_benchmark_data
+from app.seed.corpus_builder import ensure_corpus
 
 
 def ensure_initial_datasets() -> None:
     """
-    Automatically ensures the 93-control ISO/IEC 27002:2022 Master Excel workbook
-    and public municipal BPMN benchmark datasets exist on disk when the app starts.
+    Automatically ensures the 93-control ISO/IEC 27002:2022 Master Excel workbook,
+    public municipal BPMN benchmark datasets, and 12-model Ground-Truth Corpus
+    exist on disk when the app starts.
     No manual one-off scripts required.
     """
     iso_excel_path = os.path.join(
@@ -20,3 +22,9 @@ def ensure_initial_datasets() -> None:
     benchmarks_index = os.path.join(benchmarks_dir, "benchmarks_index.json")
     if not os.path.exists(benchmarks_index):
         save_benchmark_data(benchmarks_dir)
+
+    corpus_dir = os.path.join(settings.DATA_DIR, "corpus")
+    manifest_path = os.path.join(corpus_dir, "corpus_manifest.json")
+    if not os.path.exists(manifest_path):
+        ensure_corpus(corpus_dir)
+

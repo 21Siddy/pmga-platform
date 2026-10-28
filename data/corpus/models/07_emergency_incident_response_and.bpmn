@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  id="Def_07" targetNamespace="http://pmga.local/bpmn">
+  <bpmn:process id="Proc_07" name="Critical Infrastructure Incident Response" isExecutable="false">
+    <bpmn:startEvent id="Start_CyberAlert" name="Intrusion Detected on Telemetry Network">
+      <bpmn:outgoing>F_07_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:parallelGateway id="Gateway_EmergencySplit" name="Parallel Containment Actions">
+      <bpmn:incoming>F_07_1</bpmn:incoming>
+      <bpmn:outgoing>F_IsolateVLAN</bpmn:outgoing>
+      <bpmn:outgoing>F_NotifyCERT</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Task_IsolateSubnet" name="Sever Physical Uplink to SCADA Subnet">
+      <bpmn:incoming>F_IsolateVLAN</bpmn:incoming>
+      <bpmn:outgoing>F_JoinIso</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_NotifyAgency" name="Submit Urgent Regulatory Alert to BSI / CISA">
+      <bpmn:incoming>F_NotifyCERT</bpmn:incoming>
+      <bpmn:outgoing>F_JoinNotif</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:parallelGateway id="Gateway_EmergencyJoin" name="Merge Incident Containment">
+      <bpmn:incoming>F_JoinIso</bpmn:incoming>
+      <bpmn:incoming>F_JoinNotif</bpmn:incoming>
+      <bpmn:outgoing>F_ToForensics</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="Task_PreserveLogs" name="Capture Cryptographic Disk Images for Forensics">
+      <bpmn:incoming>F_ToForensics</bpmn:incoming>
+      <bpmn:outgoing>F_07_End</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_Contained" name="Threat Fully Contained">
+      <bpmn:incoming>F_07_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="F_07_1" sourceRef="Start_CyberAlert" targetRef="Gateway_EmergencySplit" />
+    <bpmn:sequenceFlow id="F_IsolateVLAN" sourceRef="Gateway_EmergencySplit" targetRef="Task_IsolateSubnet" />
+    <bpmn:sequenceFlow id="F_NotifyCERT" sourceRef="Gateway_EmergencySplit" targetRef="Task_NotifyAgency" />
+    <bpmn:sequenceFlow id="F_JoinIso" sourceRef="Task_IsolateSubnet" targetRef="Gateway_EmergencyJoin" />
+    <bpmn:sequenceFlow id="F_JoinNotif" sourceRef="Task_NotifyAgency" targetRef="Gateway_EmergencyJoin" />
+    <bpmn:sequenceFlow id="F_ToForensics" sourceRef="Gateway_EmergencyJoin" targetRef="Task_PreserveLogs" />
+    <bpmn:sequenceFlow id="F_07_End" sourceRef="Task_PreserveLogs" targetRef="End_Contained" />
+  </bpmn:process>
+</bpmn:definitions>

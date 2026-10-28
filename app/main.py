@@ -17,6 +17,10 @@ from app.services.document_service import DocumentService
 from app.services.iso_excel_service import ISOExcelService
 from app.services.llm_client import LLMClient
 from app.services.bpmn_engine import BPMNEngine, BPMNProcessGraph
+from app.services.bpmn_parser import BPMNParser
+from app.services.perturbation_engine import PerturbationEngine
+from app.services.matei_evaluator import MateiEvaluator, EvaluationMetrics
+from app.seed.corpus_builder import CORPUS_MODELS
 from app.services.gap_analyzer import GapAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -381,6 +385,111 @@ def gdpr_purge_project(project_id: str):
         "status": "success",
         "message": f"Project {project_id} permanently expunged under GDPR Art. 17."
     }
+
+# 9. Ground-Truth Corpus & Matei et al. (2026) Evaluation Workbench
+class CorpusParseRequest(BaseModel):
+    bpmn_xml: Optional[str] = None
+    title: Optional[str] = "Uploaded BPMN Process"
+
+class CorpusEvaluateRequest(BaseModel):
+    ground_truth_model_id: Optional[str] = None
+    ground_truth_xml: Optional[str] = None
+    predicted_graph: BPMNProcessGraph
+
+@app.get("/api/v1/corpus")
+def get_corpus_manifest():
+    manifest_path = os.path.join(settings.DATA_DIR, "corpus", "corpus_manifest.json")
+    if os.path.exists(manifest_path):
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return [
+        {
+            "id": m["id"],
+            "title": m["title"],
+            "archetype": m["archetype"],
+            "reference": m["reference"]
+        }
+        for m in CORPUS_MODELS
+    ]
+
+@app.get("/api/v1/corpus/{model_id}")
+def get_corpus_model_detail(model_id: str):
+    matched = next((m for m in CORPUS_MODELS if m["id"] == model_id), None)
+    if not matched:
+        raise HTTPException(status_code=404, detail=f"Corpus model '{model_id}' not found.")
+    
+    graph = BPMNParser.parse_xml_to_graph(matched["bpmn_xml"], fallback_title=matched["title"])
+    text_styles = PerturbationEngine.generate_all_styles(graph)
+    
+    return {
+        "id": matched["id"],
+        "title": matched["title"],
+        "archetype": matched["archetype"],
+        "reference": matched["reference"],
+        "bpmn_xml": matched["bpmn_xml"],
+        "graph": graph,
+        "text_styles": text_styles
+    }
+
+@app.post("/api/v1/corpus/parse-bpmn")
+async def parse_external_bpmn(request: Request):
+    content_type = request.headers.get("content-type", "")
+    xml_content = ""
+    title = "Uploaded BPMN Process"
+
+    if "application/json" in content_type:
+        body = await request.json()
+        xml_content = body.get("bpmn_xml", "")
+        title = body.get("title", title)
+    elif "multipart/form-data" in content_type:
+        form = await request.form()
+        file_obj = form.get("file")
+        if file_obj and hasattr(file_obj, "read"):
+            raw_bytes = await file_obj.read()
+            xml_content = raw_bytes.decode("utf-8", errors="replace")
+            title = getattr(file_obj, "filename", title) or title
+        elif "bpmn_xml" in form:
+            xml_content = str(form.get("bpmn_xml"))
+    else:
+        try:
+            body = await request.json()
+            xml_content = body.get("bpmn_xml", "")
+            title = body.get("title", title)
+        except Exception:
+            pass
+
+    if not xml_content.strip():
+        raise HTTPException(status_code=400, detail="Provide either a BPMN XML file upload or 'bpmn_xml' JSON string.")
+
+    try:
+        graph = BPMNParser.parse_xml_to_graph(xml_content, fallback_title=title)
+        text_styles = PerturbationEngine.generate_all_styles(graph)
+        return {
+            "title": graph.process_title,
+            "graph": graph,
+            "text_styles": text_styles,
+            "node_count": len(graph.nodes),
+            "edge_count": len(graph.edges),
+            "lanes": graph.lanes
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Failed to parse BPMN XML: {str(exc)}")
+
+@app.post("/api/v1/corpus/evaluate")
+def evaluate_reconstruction(req: CorpusEvaluateRequest):
+    gt_graph = None
+    if req.ground_truth_model_id:
+        matched = next((m for m in CORPUS_MODELS if m["id"] == req.ground_truth_model_id), None)
+        if not matched:
+            raise HTTPException(status_code=404, detail=f"Ground-truth model '{req.ground_truth_model_id}' not found.")
+        gt_graph = BPMNParser.parse_xml_to_graph(matched["bpmn_xml"], fallback_title=matched["title"])
+    elif req.ground_truth_xml:
+        gt_graph = BPMNParser.parse_xml_to_graph(req.ground_truth_xml, fallback_title="Ground Truth")
+    else:
+        raise HTTPException(status_code=400, detail="Provide 'ground_truth_model_id' or 'ground_truth_xml'.")
+
+    metrics = MateiEvaluator.evaluate(ground_truth=gt_graph, predicted=req.predicted_graph)
+    return metrics
 
 # Static Assets
 app.mount("/static", StaticFiles(directory="static"), name="static")

@@ -1,0 +1,149 @@
+[
+  {
+    "id": "01_citizen_certificate_request",
+    "title": "Citizen Birth Certificate Issuance",
+    "archetype": "Linear Multi-Lane Handoff",
+    "reference": "Public Administration Standard (E-Government Core)",
+    "file_path": "data/corpus\\models\\01_citizen_certificate_request.bpmn",
+    "node_count": 5,
+    "edge_count": 4,
+    "lanes": [
+      "Citizen",
+      "Front Desk Clerk",
+      "Municipal Archivist"
+    ]
+  },
+  {
+    "id": "02_it_workstation_rollout",
+    "title": "Standard Workstation Provisioning",
+    "archetype": "Linear Multi-Lane Handoff",
+    "reference": "ITIL Service Desk Reference",
+    "file_path": "data/corpus\\models\\02_it_workstation_rollout.bpmn",
+    "node_count": 5,
+    "edge_count": 4,
+    "lanes": [
+      "Human Resources",
+      "IT Operations"
+    ]
+  },
+  {
+    "id": "03_invoice_approval_xor",
+    "title": "Vendor Invoice Approval Flow",
+    "archetype": "Exclusive Decision Branching (XOR)",
+    "reference": "Camunda Official Reference Example",
+    "file_path": "data/corpus\\models\\03_invoice_approval_xor.bpmn",
+    "node_count": 6,
+    "edge_count": 6,
+    "lanes": [
+      "General Process"
+    ]
+  },
+  {
+    "id": "04_building_permit_triage",
+    "title": "Building Permit Structural Triage",
+    "archetype": "Exclusive Decision Branching (XOR)",
+    "reference": "Municipal Planning Code",
+    "file_path": "data/corpus\\models\\04_building_permit_triage.bpmn",
+    "node_count": 6,
+    "edge_count": 6,
+    "lanes": [
+      "General Process"
+    ]
+  },
+  {
+    "id": "05_access_request_vetting",
+    "title": "Privileged Role Request Vetting",
+    "archetype": "Exclusive Decision Branching (XOR)",
+    "reference": "ISO/IEC 27002 Control A.8.2 Reference",
+    "file_path": "data/corpus\\models\\05_access_request_vetting.bpmn",
+    "node_count": 5,
+    "edge_count": 5,
+    "lanes": [
+      "General Process"
+    ]
+  },
+  {
+    "id": "06_parallel_employee_onboarding",
+    "title": "Parallel Departmental Employee Onboarding",
+    "archetype": "Parallel Concurrency (AND)",
+    "reference": "PET & L\u00ea et al. (2025) Parallel Gateway Benchmark",
+    "file_path": "data/corpus\\models\\06_parallel_employee_onboarding.bpmn",
+    "node_count": 8,
+    "edge_count": 9,
+    "lanes": [
+      "General Process"
+    ]
+  },
+  {
+    "id": "07_emergency_incident_response_and",
+    "title": "Critical Infrastructure Incident Response",
+    "archetype": "Parallel Concurrency (AND)",
+    "reference": "NIS2 & KRITIS Cyber Incident Guidelines",
+    "file_path": "data/corpus\\models\\07_emergency_incident_response_and.bpmn",
+    "node_count": 7,
+    "edge_count": 7,
+    "lanes": [
+      "General Process"
+    ]
+  },
+  {
+    "id": "08_procurement_dual_review_and",
+    "title": "Vendor Contract Dual-Review Gate",
+    "archetype": "Parallel Concurrency (AND)",
+    "reference": "Public Sector Tender Compliance",
+    "file_path": "data/corpus\\models\\08_procurement_dual_review_and.bpmn",
+    "node_count": 7,
+    "edge_count": 7,
+    "lanes": [
+      "General Process"
+    ]
+  },
+  {
+    "id": "09_document_verification_loop",
+    "title": "Application Completeness Check and Rework Loop",
+    "archetype": "Cyclic Rework Loop",
+    "reference": "Public Administration Quality Control Loop",
+    "file_path": "data/corpus\\models\\09_document_verification_loop.bpmn",
+    "node_count": 6,
+    "edge_count": 6,
+    "lanes": [
+      "General Process"
+    ]
+  },
+  {
+    "id": "10_change_management_testing_loop",
+    "title": "IT Change Security Testing Loop",
+    "archetype": "Cyclic Rework Loop",
+    "reference": "ISO 27002 A.8.32 Change Management Protocol",
+    "file_path": "data/corpus\\models\\10_change_management_testing_loop.bpmn",
+    "node_count": 6,
+    "edge_count": 6,
+    "lanes": [
+      "General Process"
+    ]
+  },
+  {
+    "id": "11_scada_vendor_maintenance_hybrid",
+    "title": "Industrial SCADA Vendor Maintenance",
+    "archetype": "Complex Hybrid (XOR + AND)",
+    "reference": "Municipal Water Utility KRITIS Standard",
+    "file_path": "data/corpus\\models\\11_scada_vendor_maintenance_hybrid.bpmn",
+    "node_count": 9,
+    "edge_count": 10,
+    "lanes": [
+      "General Process"
+    ]
+  },
+  {
+    "id": "12_gdpr_data_breach_notification",
+    "title": "GDPR 72-Hour Data Breach Incident Workflow",
+    "archetype": "Complex Hybrid (XOR + AND)",
+    "reference": "GDPR Articles 33 & 34 Compliance Workflow",
+    "file_path": "data/corpus\\models\\12_gdpr_data_breach_notification.bpmn",
+    "node_count": 9,
+    "edge_count": 10,
+    "lanes": [
+      "General Process"
+    ]
+  }
+]

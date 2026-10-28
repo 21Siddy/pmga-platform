@@ -159,5 +159,36 @@ const API = {
       method: 'DELETE'
     });
     return this.handleResponse(res);
+  },
+
+  async getCorpusManifest() {
+    const res = await fetch('/api/v1/corpus');
+    return this.handleResponse(res);
+  },
+
+  async getCorpusModel(modelId) {
+    const res = await fetch(`/api/v1/corpus/${modelId}`);
+    return this.handleResponse(res);
+  },
+
+  async parseExternalBPMN(bpmnXml, title = 'Uploaded BPMN') {
+    const res = await fetch('/api/v1/corpus/parse-bpmn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bpmn_xml: bpmnXml, title })
+    });
+    return this.handleResponse(res);
+  },
+
+  async evaluateBPMN(groundTruthModelId, predictedGraph) {
+    const res = await fetch('/api/v1/corpus/evaluate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ground_truth_model_id: groundTruthModelId,
+        predicted_graph: predictedGraph
+      })
+    });
+    return this.handleResponse(res);
   }
 };

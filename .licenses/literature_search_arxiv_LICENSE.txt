@@ -1,0 +1,2 @@
+Notification Timestamp: 2026-10-28T19:35:45+01:00
+The user has been notified to check the arXiv API Terms of Use at https://info.arxiv.org/help/api/index.html and to always verify the specific license of retrieved papers for any usage or redistribution restrictions.

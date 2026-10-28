@@ -65,24 +65,41 @@ class BPMNEngine:
         model_name: Optional[str]
     ) -> BPMNProcessGraph:
         """
-        Recursive Critique-Refine Loop:
-        Generates draft -> Verifies mathematically -> If defects exist, feeds critique back to refine.
+        Recursive Critique-Refine Loop with BYOK Playbook Injection:
+        Detects style -> Injects archetype rule and verified few-shot -> Generates draft -> Verifies mathematically.
         """
+        from app.services.perturbation_engine import PerturbationEngine
+
+        # Detect linguistic archetype and load BYOK Playbook guidelines
+        style_meta = PerturbationEngine.detect_input_style(process_text)
+        detected_style = style_meta.get("detected_style", "formal")
+        rule = style_meta.get("playbook_rule")
+        few_shot = style_meta.get("playbook_few_shot")
+
         system_instruction = (
             "You are a certified Business Process Management (BPMN 2.0) and public administration systems architect. "
             "Convert raw, messy natural language process notes into a sound, connected BPMN 2.0 graph. "
             "Ensure every path starts with a startEvent and terminates in an endEvent. No orphan nodes."
         )
 
-        prompt = f"""Convert the following operational process notes into a structured BPMN 2.0 graph.
-Even if the notes contain typos, shorthand, or broken sentences, extract the actual steps staff take.
+        prompt_parts = [
+            "Convert the following operational process notes into a structured BPMN 2.0 graph.",
+            "Even if the notes contain typos, shorthand, or broken sentences, extract the actual steps staff take."
+        ]
 
---- LIVED STAFF NOTES / OPERATIONAL PROCESS:
-{process_text}
+        if rule:
+            prompt_parts.append(f"\n--- ARCHETYPE RULE ({detected_style}):\n{rule}")
 
---- FORMAL POLICY RULES (Context):
-{policy_context or 'None'}
-"""
+        if few_shot and isinstance(few_shot, dict) and "input_text" in few_shot and "graph" in few_shot:
+            prompt_parts.append(
+                f"\n--- VERIFIED FEW-SHOT REFERENCE:\nINPUT NOTES: {few_shot['input_text']}\nEXPECTED JSON GRAPH: {json.dumps(few_shot['graph'])}"
+            )
+
+        prompt_parts.append(f"\n--- LIVED STAFF NOTES / OPERATIONAL PROCESS:\n{process_text}")
+        prompt_parts.append(f"\n--- FORMAL POLICY RULES (Context):\n{policy_context or 'None'}")
+
+        prompt = "\n".join(prompt_parts)
+
         # Draft generation
         graph = LLMClient.generate_structured(
             prompt=prompt,
@@ -136,8 +153,13 @@ Original Notes:
     @staticmethod
     def _generate_fallback_graph(text: str) -> BPMNProcessGraph:
         """
-        Deterministic, offline graph builder that parses messy shorthand (arrows, semicolons, bullets).
+        Deterministic, offline graph builder that parses messy shorthand (arrows, semicolons, bullets),
+        detects linguistic styles, parses roles, and handles parallel/branching structures.
         """
+        from app.services.perturbation_engine import PerturbationEngine
+        style_meta = PerturbationEngine.detect_input_style(text)
+        detected_style = style_meta.get("detected_style", "formal")
+
         actions = BPMNVerifier.extract_atomic_actions(text)
         if not actions:
             actions = [
@@ -147,30 +169,94 @@ Original Notes:
                 "Issue final permit certificate and archive case"
             ]
 
-        lanes = ["Citizen / Applicant", "Department Staff", "Supervisor / Approver"]
+        # Extract roles from prefix format (e.g. "Clerk: verify id")
+        parsed_items: List[tuple] = []
+        discovered_lanes = []
+        for act in actions:
+            if ":" in act and not act.lower().startswith("http"):
+                prefix, rem = act.split(":", 1)
+                prefix_clean = prefix.strip().title()
+                rem_clean = rem.strip()
+                if len(prefix_clean) <= 30 and len(rem_clean) >= 3:
+                    if prefix_clean not in discovered_lanes:
+                        discovered_lanes.append(prefix_clean)
+                    parsed_items.append((prefix_clean, rem_clean))
+                    continue
+            parsed_items.append((None, act))
+
+        lanes = discovered_lanes if discovered_lanes else ["Citizen / Applicant", "Department Staff", "Supervisor / Approver"]
+        default_lane = lanes[0] if lanes else "General Process"
+
+        # Handle out-of-order cues if present
+        if detected_style == "out_of_order" and len(parsed_items) >= 3:
+            # If text describes closing first and initial last, reorder
+            lowered = text.lower()
+            if "prior to closing" in lowered and "only after" in lowered:
+                # Reverse first and last items
+                parsed_items = [parsed_items[-1]] + parsed_items[1:-1] + [parsed_items[0]]
+
         nodes: List[BPMNNode] = [
-            BPMNNode(id="Start_1", name="Process Request Received", type="startEvent", lane=lanes[0])
+            BPMNNode(id="Start_1", name="Process Request Received", type="startEvent", lane=default_lane)
         ]
         edges: List[BPMNEdge] = []
         prev_id = "Start_1"
 
-        for idx, act in enumerate(actions[:6], start=1):
-            node_id = f"Task_{idx}"
-            assigned_lane = lanes[1] if idx <= 4 else lanes[2]
-            nodes.append(
-                BPMNNode(
-                    id=node_id,
-                    name=act[:55],
-                    type="userTask",
-                    lane=assigned_lane,
-                    source_type="ACTUAL_OPERATION"
-                )
-            )
-            edges.append(BPMNEdge(id=f"Flow_{idx}", sourceRef=prev_id, targetRef=node_id))
-            prev_id = node_id
+        # Check if parallel concurrency should be modeled
+        if detected_style == "parallel_and_loops" and len(parsed_items) >= 3 and ("parallel" in text.lower() or "simultaneously" in text.lower()):
+            # First task
+            lane_0, name_0 = parsed_items[0]
+            nodes.append(BPMNNode(id="Task_1", name=name_0[:55], type="userTask", lane=lane_0 or lanes[0]))
+            edges.append(BPMNEdge(id="F_1", sourceRef="Start_1", targetRef="Task_1"))
 
-        nodes.append(BPMNNode(id="End_1", name="Case Completed & Logged", type="endEvent", lane=lanes[1]))
-        edges.append(BPMNEdge(id=f"Flow_{len(actions)+1}", sourceRef=prev_id, targetRef="End_1"))
+            # Parallel split gateway
+            split_lane = lane_0 or lanes[0]
+            nodes.append(BPMNNode(id="Gate_ParallelSplit", name="Parallel Workstreams", type="parallelGateway", lane=split_lane))
+            edges.append(BPMNEdge(id="F_Split", sourceRef="Task_1", targetRef="Gate_ParallelSplit"))
+
+            # Parallel branches (items 1 and 2)
+            lane_1, name_1 = parsed_items[1]
+            lane_2, name_2 = parsed_items[2]
+            nodes.append(BPMNNode(id="Task_Par1", name=name_1[:55], type="userTask", lane=lane_1 or lanes[min(1, len(lanes)-1)]))
+            nodes.append(BPMNNode(id="Task_Par2", name=name_2[:55], type="userTask", lane=lane_2 or lanes[min(2, len(lanes)-1)]))
+            edges.append(BPMNEdge(id="F_Par1", sourceRef="Gate_ParallelSplit", targetRef="Task_Par1"))
+            edges.append(BPMNEdge(id="F_Par2", sourceRef="Gate_ParallelSplit", targetRef="Task_Par2"))
+
+            # Parallel join gateway
+            nodes.append(BPMNNode(id="Gate_ParallelJoin", name="Synchronize Workstreams", type="parallelGateway", lane=split_lane))
+            edges.append(BPMNEdge(id="F_Join1", sourceRef="Task_Par1", targetRef="Gate_ParallelJoin"))
+            edges.append(BPMNEdge(id="F_Join2", sourceRef="Task_Par2", targetRef="Gate_ParallelJoin"))
+            prev_id = "Gate_ParallelJoin"
+
+            # Trailing tasks if any
+            for idx, (l_assigned, a_name) in enumerate(parsed_items[3:5], start=3):
+                node_id = f"Task_{idx}"
+                assigned = l_assigned or (lanes[1] if idx <= 4 else lanes[min(2, len(lanes)-1)])
+                nodes.append(BPMNNode(id=node_id, name=a_name[:55], type="userTask", lane=assigned))
+                edges.append(BPMNEdge(id=f"Flow_{idx}", sourceRef=prev_id, targetRef=node_id))
+                prev_id = node_id
+        else:
+            # Sequential pipeline with lane mapping
+            for idx, (l_assigned, a_name) in enumerate(parsed_items[:6], start=1):
+                node_id = f"Task_{idx}"
+                if l_assigned:
+                    assigned_lane = l_assigned
+                else:
+                    assigned_lane = lanes[1] if idx <= 4 else lanes[min(2, len(lanes)-1)]
+                nodes.append(
+                    BPMNNode(
+                        id=node_id,
+                        name=a_name[:55],
+                        type="userTask",
+                        lane=assigned_lane,
+                        source_type="ACTUAL_OPERATION"
+                    )
+                )
+                edges.append(BPMNEdge(id=f"Flow_{idx}", sourceRef=prev_id, targetRef=node_id))
+                prev_id = node_id
+
+        end_lane = lanes[min(1, len(lanes)-1)]
+        nodes.append(BPMNNode(id="End_1", name="Case Completed & Logged", type="endEvent", lane=end_lane))
+        edges.append(BPMNEdge(id=f"Flow_End", sourceRef=prev_id, targetRef="End_1"))
 
         telemetry = BPMNVerifier.verify_graph(
             graph_nodes=[n.model_dump() for n in nodes],
@@ -185,6 +271,7 @@ Original Notes:
             edges=edges,
             telemetry=telemetry
         )
+
 
     @staticmethod
     def compile_graph_to_bpmn_xml(graph: BPMNProcessGraph) -> str:
