@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_IT_Access"
+                  targetNamespace="http://civicprocess.org/bpmn">
+  <bpmn:collaboration id="Collaboration_1">
+    <bpmn:participant id="Participant_Helpdesk" name="Municipal IT Onboarding &amp; Access Provisioning" processRef="Process_IT_Access" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_IT_Access" isExecutable="false">
+    <bpmn:laneSet id="LaneSet_1">
+      <bpmn:lane id="Lane_HR" name="Human Resources">
+        <bpmn:flowNodeRef>StartEvent_Onboarding</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_SubmitHRNotice</bpmn:flowNodeRef>
+      </bpmn:lane>
+      <bpmn:lane id="Lane_Helpdesk" name="IT Helpdesk / Admin">
+        <bpmn:flowNodeRef>Task_CloneExistingUser</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Gateway_AdminNeeded</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_AssignSharedAdmin</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>Task_IssueWorkstation</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>EndEvent_AccessActive</bpmn:flowNodeRef>
+      </bpmn:lane>
+    </bpmn:laneSet>
+    <bpmn:startEvent id="StartEvent_Onboarding" name="New Employee Arrives">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_SubmitHRNotice" name="HR Submits Delayed Onboarding Ticket">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_CloneExistingUser" name="Clone Existing Permissions (Skip DPO Sign-off)">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="Gateway_AdminNeeded" name="Admin Rights Requested?">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_YesAdmin</bpmn:outgoing>
+      <bpmn:outgoing>Flow_NoAdmin</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_AssignSharedAdmin" name="Share Unencrypted svc_muni_admin (No MFA)">
+      <bpmn:incoming>Flow_YesAdmin</bpmn:incoming>
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_IssueWorkstation" name="Issue Standard Workstation to Staff">
+      <bpmn:incoming>Flow_NoAdmin</bpmn:incoming>
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+      <bpmn:outgoing>Flow_5</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="EndEvent_AccessActive" name="Staff Active on Network">
+      <bpmn:incoming>Flow_5</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_Onboarding" targetRef="Task_SubmitHRNotice" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Task_SubmitHRNotice" targetRef="Task_CloneExistingUser" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Task_CloneExistingUser" targetRef="Gateway_AdminNeeded" />
+    <bpmn:sequenceFlow id="Flow_YesAdmin" name="Yes" sourceRef="Gateway_AdminNeeded" targetRef="Task_AssignSharedAdmin" />
+    <bpmn:sequenceFlow id="Flow_NoAdmin" name="No" sourceRef="Gateway_AdminNeeded" targetRef="Task_IssueWorkstation" />
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Task_AssignSharedAdmin" targetRef="Task_IssueWorkstation" />
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Task_IssueWorkstation" targetRef="EndEvent_AccessActive" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1">
+      <bpmndi:BPMNShape id="Participant_Helpdesk_di" bpmnElement="Participant_Helpdesk" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="860" height="380" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_HR_di" bpmnElement="Lane_HR" isHorizontal="true">
+        <dc:Bounds x="190" y="80" width="830" height="160" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Lane_Helpdesk_di" bpmnElement="Lane_Helpdesk" isHorizontal="true">
+        <dc:Bounds x="190" y="240" width="830" height="220" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEvent_Onboarding_di" bpmnElement="StartEvent_Onboarding">
+        <dc:Bounds x="232" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="214" y="185" width="75" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SubmitHRNotice_di" bpmnElement="Task_SubmitHRNotice">
+        <dc:Bounds x="320" y="120" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CloneExistingUser_di" bpmnElement="Task_CloneExistingUser">
+        <dc:Bounds x="320" y="280" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Gateway_AdminNeeded_di" bpmnElement="Gateway_AdminNeeded" isMarkerVisible="true">
+        <dc:Bounds x="495" y="295" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="485" y="260" width="70" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AssignSharedAdmin_di" bpmnElement="Task_AssignSharedAdmin">
+        <dc:Bounds x="590" y="270" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_IssueWorkstation_di" bpmnElement="Task_IssueWorkstation">
+        <dc:Bounds x="760" y="320" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_AccessActive_di" bpmnElement="EndEvent_AccessActive">
+        <dc:Bounds x="932" y="342" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="918" y="385" width="67" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="268" y="160" />
+        <di:waypoint x="320" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="385" y="200" />
+        <di:waypoint x="385" y="280" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <di:waypoint x="450" y="320" />
+        <di:waypoint x="495" y="320" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_YesAdmin_di" bpmnElement="Flow_YesAdmin">
+        <di:waypoint x="545" y="320" />
+        <di:waypoint x="590" y="310" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_NoAdmin_di" bpmnElement="Flow_NoAdmin">
+        <di:waypoint x="520" y="345" />
+        <di:waypoint x="520" y="370" />
+        <di:waypoint x="760" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <di:waypoint x="720" y="310" />
+        <di:waypoint x="740" y="310" />
+        <di:waypoint x="740" y="350" />
+        <di:waypoint x="760" y="350" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5">
+        <di:waypoint x="880" y="360" />
+        <di:waypoint x="932" y="360" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,38 @@
+# Python virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python cache and byte-code
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment and sensitive keys (Never commit API keys or credentials)
+.env
+.env.local
+*.env
+*.pem
+*.key
+
+# Local project runtime storage & SQLite databases
+storage/*.db
+storage/*.sqlite3
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/exports/*
+!storage/exports/.gitkeep
+
+# Operating system and editor artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace

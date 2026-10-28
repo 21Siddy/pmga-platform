@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_Building_Permit"
+                  targetNamespace="http://civicprocess.org/bpmn">
+  <bpmn:collaboration id="Collaboration_2">
+    <bpmn:participant id="Participant_Building" name="Citizen Building Permit Intake &amp; Field Workflow" processRef="Process_Building_Permit" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_Building_Permit" isExecutable="false">
+    <bpmn:startEvent id="Start_ApplicationReceived" name="Citizen Submits Permit Application">
+      <bpmn:outgoing>Flow_B1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_ReceiveEmailAttachment" name="Receive Plain Email Attachment (Bypass Portal)">
+      <bpmn:incoming>Flow_B1</bpmn:incoming>
+      <bpmn:outgoing>Flow_B2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_SaveLocalWorkstation" name="Save Blueprints to Local C:\Drive">
+      <bpmn:incoming>Flow_B2</bpmn:incoming>
+      <bpmn:outgoing>Flow_B3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_CopyUnencryptedUSB" name="Copy Plans to Unencrypted USB for Fire Marshal">
+      <bpmn:incoming>Flow_B3</bpmn:incoming>
+      <bpmn:outgoing>Flow_B4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_FinalApproval" name="Manual Approval Stamp Issued">
+      <bpmn:incoming>Flow_B4</bpmn:incoming>
+      <bpmn:outgoing>Flow_B5</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_PermitGranted" name="Permit Mailed to Citizen">
+      <bpmn:incoming>Flow_B5</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_B1" sourceRef="Start_ApplicationReceived" targetRef="Task_ReceiveEmailAttachment" />
+    <bpmn:sequenceFlow id="Flow_B2" sourceRef="Task_ReceiveEmailAttachment" targetRef="Task_SaveLocalWorkstation" />
+    <bpmn:sequenceFlow id="Flow_B3" sourceRef="Task_SaveLocalWorkstation" targetRef="Task_CopyUnencryptedUSB" />
+    <bpmn:sequenceFlow id="Flow_B4" sourceRef="Task_CopyUnencryptedUSB" targetRef="Task_FinalApproval" />
+    <bpmn:sequenceFlow id="Flow_B5" sourceRef="Task_FinalApproval" targetRef="End_PermitGranted" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_2">
+    <bpmndi:BPMNPlane id="BPMNPlane_2" bpmnElement="Collaboration_2">
+      <bpmndi:BPMNShape id="Participant_Building_di" bpmnElement="Participant_Building" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="850" height="220" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_ApplicationReceived_di" bpmnElement="Start_ApplicationReceived">
+        <dc:Bounds x="212" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ReceiveEmailAttachment_di" bpmnElement="Task_ReceiveEmailAttachment">
+        <dc:Bounds x="290" y="150" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SaveLocalWorkstation_di" bpmnElement="Task_SaveLocalWorkstation">
+        <dc:Bounds x="440" y="150" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CopyUnencryptedUSB_di" bpmnElement="Task_CopyUnencryptedUSB">
+        <dc:Bounds x="590" y="150" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_FinalApproval_di" bpmnElement="Task_FinalApproval">
+        <dc:Bounds x="750" y="150" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_PermitGranted_di" bpmnElement="End_PermitGranted">
+        <dc:Bounds x="912" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_B1_di" bpmnElement="Flow_B1">
+        <di:waypoint x="248" y="190" />
+        <di:waypoint x="290" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_B2_di" bpmnElement="Flow_B2">
+        <di:waypoint x="410" y="190" />
+        <di:waypoint x="440" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_B3_di" bpmnElement="Flow_B3">
+        <di:waypoint x="560" y="190" />
+        <di:waypoint x="590" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_B4_di" bpmnElement="Flow_B4">
+        <di:waypoint x="720" y="190" />
+        <di:waypoint x="750" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_B5_di" bpmnElement="Flow_B5">
+        <di:waypoint x="870" y="190" />
+        <di:waypoint x="912" y="190" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

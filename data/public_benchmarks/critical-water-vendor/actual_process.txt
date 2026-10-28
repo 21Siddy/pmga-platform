@@ -1,0 +1,5 @@
+Water Treatment Plant Shift Supervisor Log:
+During night shifts and emergency pipe bursts, the on-call vendor technician in another city cannot wait 24 hours for the municipal IT department to approve a jump host session.
+Three years ago, an emergency cellular 4G modem (AnyDesk / TeamViewer) was plugged directly into the central PLC telemetry switch. The login credentials ('admin / Wasser2021!') are written on a whiteboard inside the pump station.
+
+The vendor connects directly over AnyDesk from their home internet without MFA. The connection bypasses the municipal firewall and SIEM entirely, so no logs exist of when the vendor connects or what PLC setpoints they modify.

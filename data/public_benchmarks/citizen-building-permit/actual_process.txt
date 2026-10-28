@@ -1,0 +1,4 @@
+Building Office Clerk Field Observations:
+The state citizen portal frequently times out when citizens upload architectural CAD blueprints (>50MB). To avoid public complaints, clerks tell citizens on the phone to send their blueprints and deed contracts via regular unencrypted email attachments to the general department mailbox ('bauamt@stadt-verwaltung.local').
+
+Clerks download these citizen attachments to their local C:\Users\Public\Downloads folders. When consulting the Fire Protection inspector, clerks burn the plans onto unencrypted rewriteable DVDs or put them on shared USB sticks because the Fire Marshal is located in a different building without direct access to the municipal ERM network.

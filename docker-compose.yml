@@ -1,0 +1,29 @@
+services:
+  civicprocess:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: civicprocess-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+      - APP_BASE_URL=https://oldisserving.live
+      - ALLOWED_ORIGINS=https://oldisserving.live,http://localhost:8000
+      - DEFAULT_GEMINI_MODEL=gemini-2.5-flash
+      # Optional: GEMINI_API_KEY can be passed via Coolify Environment Variables
+    volumes:
+      - civicprocess-storage:/app/storage
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  civicprocess-storage:
+    driver: local

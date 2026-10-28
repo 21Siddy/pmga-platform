@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_Water_Vendor"
+                  targetNamespace="http://civicprocess.org/bpmn">
+  <bpmn:collaboration id="Collaboration_3">
+    <bpmn:participant id="Participant_Water" name="Municipal Water SCADA Remote Access" processRef="Process_Water_Vendor" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_Water_Vendor" isExecutable="false">
+    <bpmn:startEvent id="Start_PipeAnomaly" name="Telemetry Pressure Alert Detected">
+      <bpmn:outgoing>Flow_W1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_CallVendor" name="Shift Worker Calls Vendor Directly (Bypass Ticket)">
+      <bpmn:incoming>Flow_W1</bpmn:incoming>
+      <bpmn:outgoing>Flow_W2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_ConnectAnydesk" name="Vendor Connects via Direct 4G AnyDesk (No MFA)">
+      <bpmn:incoming>Flow_W2</bpmn:incoming>
+      <bpmn:outgoing>Flow_W3</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_DirectPLCControl" name="Vendor Modifies Pump PLC Setpoints (No SIEM Log)">
+      <bpmn:incoming>Flow_W3</bpmn:incoming>
+      <bpmn:outgoing>Flow_W4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_PressureStabilized" name="Pressure Stabilized (No Incident Audit Trail)">
+      <bpmn:incoming>Flow_W4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_W1" sourceRef="Start_PipeAnomaly" targetRef="Task_CallVendor" />
+    <bpmn:sequenceFlow id="Flow_W2" sourceRef="Task_CallVendor" targetRef="Task_ConnectAnydesk" />
+    <bpmn:sequenceFlow id="Flow_W3" sourceRef="Task_ConnectAnydesk" targetRef="Task_DirectPLCControl" />
+    <bpmn:sequenceFlow id="Flow_W4" sourceRef="Task_DirectPLCControl" targetRef="End_PressureStabilized" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_3">
+    <bpmndi:BPMNPlane id="BPMNPlane_3" bpmnElement="Collaboration_3">
+      <bpmndi:BPMNShape id="Participant_Water_di" bpmnElement="Participant_Water" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="750" height="220" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_PipeAnomaly_di" bpmnElement="Start_PipeAnomaly">
+        <dc:Bounds x="212" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CallVendor_di" bpmnElement="Task_CallVendor">
+        <dc:Bounds x="290" y="150" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ConnectAnydesk_di" bpmnElement="Task_ConnectAnydesk">
+        <dc:Bounds x="450" y="150" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_DirectPLCControl_di" bpmnElement="Task_DirectPLCControl">
+        <dc:Bounds x="620" y="150" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_PressureStabilized_di" bpmnElement="End_PressureStabilized">
+        <dc:Bounds x="802" y="172" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_W1_di" bpmnElement="Flow_W1">
+        <di:waypoint x="248" y="190" />
+        <di:waypoint x="290" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_W2_di" bpmnElement="Flow_W2">
+        <di:waypoint x="410" y="190" />
+        <di:waypoint x="450" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_W3_di" bpmnElement="Flow_W3">
+        <di:waypoint x="580" y="190" />
+        <di:waypoint x="620" y="190" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_W4_di" bpmnElement="Flow_W4">
+        <di:waypoint x="750" y="190" />
+        <di:waypoint x="802" y="190" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
