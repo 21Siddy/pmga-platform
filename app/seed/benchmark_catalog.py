@@ -379,8 +379,4 @@ def save_benchmark_data(dest_dir: str):
             f.write(bm["actual_process"])
         with open(os.path.join(bm_dir, "model.bpmn"), "w", encoding="utf-8") as f:
             f.write(bm["bpmn_xml"])
-            
-    print(f"Loaded {len(BENCHMARKS)} real municipal benchmark case studies into: {dest_dir}")
 
-if __name__ == "__main__":
-    save_benchmark_data(os.path.join("data", "public_benchmarks"))

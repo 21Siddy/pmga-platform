@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, Query, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
@@ -10,15 +11,30 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.database import init_db, get_db
+from app.seed import ensure_initial_datasets
 from app.services.document_service import DocumentService
 from app.services.iso_excel_service import ISOExcelService
 from app.services.bpmn_engine import BPMNEngine, BPMNProcessGraph
 from app.services.gap_analyzer import GapAnalyzer
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Automatic application lifecycle manager:
+    1. Initializes/migrates the SQLite database tables on startup.
+    2. Ensures the 93-control ISO 27002:2022 Excel file and benchmark datasets exist.
+    """
+    init_db()
+    ensure_initial_datasets()
+    yield
+
+
 app = FastAPI(
     title="CivicProcess — BPMN 2.0 & ISO 27001/27002 Gap Platform",
     description="GovTech & Critical Infrastructure Process Modeling and Compliance Gap Workbench",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS configuration
@@ -30,10 +46,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Startup
-@app.on_event("startup")
-def on_startup():
-    init_db()
 
 # Health Check (Coolify / Cloudflare)
 @app.get("/api/v1/health")

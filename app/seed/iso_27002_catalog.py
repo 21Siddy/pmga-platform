@@ -1481,8 +1481,4 @@ def build_iso_excel(output_path: str):
     ws.freeze_panes = "A2"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     wb.save(output_path)
-    print(f"Master ISO 27002:2022 workbook successfully written to: {output_path}")
 
-if __name__ == "__main__":
-    out_file = os.path.join("data", "iso_checklists", "ISO_27002_2022_Master_Checklist.xlsx")
-    build_iso_excel(out_file)

@@ -24,33 +24,45 @@
 
 ---
 
-## 🚀 Quickstart
+## 🏛️ Project Architecture
 
-### Prerequisites
-- Python 3.12+ (or Docker)
-- Git
-
-### 1. Clone & Setup
-```bash
-git clone https://github.com/your-username/civicprocess.git
-cd civicprocess
-
-# Setup Virtual Environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+```text
+├── app/
+│   ├── main.py                  # FastAPI entry point & automatic lifespan startup
+│   ├── config.py                # Environment & security configuration
+│   ├── database.py              # SQLite WAL connection pool & schema manager
+│   ├── seed/                    # Built-in domain catalogs (auto-verified on startup)
+│   │   ├── iso_27002_catalog.py # Full 93-Control ISO/IEC 27002:2022 Annex A definitions
+│   │   └── benchmark_catalog.py # 3 Real-World Municipal BPMN & Policy/Practice Case Studies
+│   └── services/
+│       ├── bpmn_engine.py       # Gemini LLM-to-BPMN graph extractor & BPMNDI XML compiler
+│       ├── document_service.py  # PDF/DOCX/MD parser & GDPR PII pre-flight redactor
+│       ├── gap_analyzer.py      # Policy-vs-Practice Gap & Compensating Control engine
+│       └── iso_excel_service.py # Multi-column ISO Excel reader & annotated report exporter
+├── static/                      # Vanilla HTML5/CSS3/ES6 Swiss Editorial Frontend + bpmn-js
+├── data/                        # Auto-populated ISO Excel & BPMN benchmark files
+├── storage/                     # Local runtime SQLite DB, uploads, and generated exports
+├── tests/                       # Automated Pytest suite
+└── run.ps1                      # 1-Click Local Launcher (starts server & opens browser)
 ```
 
-### 2. Populate Datasets & Launch
-```bash
-# Build the 93-Control ISO 27002:2022 Master Excel and Municipal Benchmarks
-python scripts/build_iso_excel.py
-python scripts/build_benchmark_data.py
+---
 
-# Start Server
-uvicorn app.main:app --reload --port 8000
+## 🚀 Quickstart (Run Locally)
+
+### 1. One-Command Local Launch (Windows PowerShell)
+Simply run:
+```powershell
+.\run.ps1
 ```
-Open **[http://localhost:8000](http://localhost:8000)** in your browser.
+Or start Uvicorn directly:
+```powershell
+.\.venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8080 --reload
+```
+When the server starts, its `lifespan` manager **automatically** initializes the SQLite database and verifies that the 93-control ISO 27002 Excel file and municipal benchmarks are ready.
+
+Open **[http://127.0.0.1:8080](http://127.0.0.1:8080)** in your browser!
+
 
 ---
 
