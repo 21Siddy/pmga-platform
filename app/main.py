@@ -181,13 +181,14 @@ async def upload_document(
     doc_type: str = Form(...),
     file: UploadFile = File(...)
 ):
-    save_path = os.path.join(settings.uploads_path, f"{uuid.uuid4()}_{file.filename}")
+    safe_filename = os.path.basename(file.filename or "upload.bin")
+    save_path = os.path.join(settings.uploads_path, f"{uuid.uuid4()}_{safe_filename}")
     with open(save_path, "wb") as f:
         content = await file.read()
         f.write(content)
 
     try:
-        extracted = DocumentService.extract_text_from_file(save_path, file.filename)
+        extracted = DocumentService.extract_text_from_file(save_path, safe_filename)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

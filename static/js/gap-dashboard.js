@@ -5,6 +5,16 @@
  */
 
 const GapDashboard = {
+  escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+
   render(gapData, containerId = 'findings-container') {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -40,14 +50,14 @@ const GapDashboard = {
 
   renderFindingCard(finding) {
     const badgeClass = finding.status === 'CRITICAL_GAP' ? 'critical' : (finding.status === 'PARTIAL_GAP' ? 'warning' : 'compliant');
-    const badgeLabel = finding.status.replace('_', ' ');
+    const badgeLabel = this.escapeHtml(finding.status.replace('_', ' '));
 
-    const todosHtml = (finding.actionable_todos || []).map(t => `<li>${t}</li>`).join('');
-    const rolesHtml = (finding.roles_to_consult || []).map(r => `<li>${r}</li>`).join('');
+    const todosHtml = (finding.actionable_todos || []).map(t => `<li>${this.escapeHtml(t)}</li>`).join('');
+    const rolesHtml = (finding.roles_to_consult || []).map(r => `<li>${this.escapeHtml(r)}</li>`).join('');
     
     let compensatingHtml = '';
     if (finding.compensating_controls && finding.compensating_controls.length > 0) {
-      const compList = finding.compensating_controls.map(c => `<p>• ${c}</p>`).join('');
+      const compList = finding.compensating_controls.map(c => `<p>• ${this.escapeHtml(c)}</p>`).join('');
       compensatingHtml = `
         <div class="compensating-box">
           <h5>Pragmatic Risk Compromise / Compensating Controls</h5>
@@ -61,24 +71,24 @@ const GapDashboard = {
       <div class="finding-card">
         <div class="finding-header">
           <span class="finding-badge ${badgeClass}">${badgeLabel}</span>
-          <span style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-muted);">${finding.chapter}</span>
+          <span style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-muted);">${this.escapeHtml(finding.chapter)}</span>
         </div>
 
         <div class="finding-title-row">
-          <span class="finding-id">${finding.control_id}</span>
-          <h4 class="finding-title">${finding.control_title}</h4>
+          <span class="finding-id">${this.escapeHtml(finding.control_id)}</span>
+          <h4 class="finding-title">${this.escapeHtml(finding.control_title)}</h4>
         </div>
 
         <div class="plain-english-box">
           <strong>PLAIN-ENGLISH GAP SUMMARY (WHAT HAPPENS & WHY IT MATTERS):</strong>
-          <p>${finding.plain_english_gap}</p>
+          <p>${this.escapeHtml(finding.plain_english_gap)}</p>
         </div>
 
         <div class="finding-grid-2col">
           <div class="sub-panel">
             <h5>Policy vs Reality Comparison</h5>
-            <p style="font-size: 0.82rem; margin-bottom: 6px;"><strong>Formal Mandate:</strong> ${finding.policy_claim || 'None stated'}</p>
-            <p style="font-size: 0.82rem; color: #B45309;"><strong>Lived Practice:</strong> ${finding.operational_reality || 'Not documented'}</p>
+            <p style="font-size: 0.82rem; margin-bottom: 6px;"><strong>Formal Mandate:</strong> ${this.escapeHtml(finding.policy_claim || 'None stated')}</p>
+            <p style="font-size: 0.82rem; color: #B45309;"><strong>Lived Practice:</strong> ${this.escapeHtml(finding.operational_reality || 'Not documented')}</p>
           </div>
           <div class="sub-panel">
             <h5>Who Must Be Consulted</h5>
