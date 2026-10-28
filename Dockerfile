@@ -1,4 +1,4 @@
-# Hardened Multi-Stage Dockerfile for CivicProcess
+# Hardened Multi-Stage Dockerfile for PMGA Platform
 # Principles: Non-root user, minimal attack surface (ISO 27001 A.8.2 / KRITIS)
 
 FROM python:3.12-slim AS builder
@@ -27,8 +27,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     APP_PORT=8000
 
 # Create non-privileged system user
-RUN groupadd -g 1001 civicgroup && \
-    useradd -u 1001 -g civicgroup -m -s /bin/bash civicuser
+RUN groupadd -g 1001 pmgagroup && \
+    useradd -u 1001 -g pmgagroup -m -s /bin/bash pmgauser
 
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
@@ -38,9 +38,9 @@ COPY . .
 
 # Ensure storage directories exist with proper permissions
 RUN mkdir -p storage/uploads storage/exports && \
-    chown -R civicuser:civicgroup /app
+    chown -R pmgauser:pmgagroup /app
 
-USER civicuser
+USER pmgauser
 
 EXPOSE 8000
 

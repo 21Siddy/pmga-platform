@@ -1,9 +1,9 @@
 services:
-  civicprocess:
+  pmga:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: civicprocess-app
+    container_name: pmga-platform
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -11,12 +11,12 @@ services:
       - APP_ENV=production
       - APP_HOST=0.0.0.0
       - APP_PORT=8000
-      - APP_BASE_URL=https://oldisserving.live
-      - ALLOWED_ORIGINS=https://oldisserving.live,http://localhost:8000
-      - DEFAULT_GEMINI_MODEL=gemini-2.5-flash
-      # Optional: GEMINI_API_KEY can be passed via Coolify Environment Variables
+      - APP_BASE_URL=https://pmga.oldisserving.live
+      - ALLOWED_ORIGINS=https://pmga.oldisserving.live,https://oldisserving.live,http://localhost:8000
+      - DEFAULT_GEMINI_MODEL=gemini-3.8-flash
+      # Optional: API keys (GEMINI_API_KEY, API_KEY, API_BASE) can be passed via Coolify Environment Variables
     volumes:
-      - civicprocess-storage:/app/storage
+      - pmga-storage:/app/storage
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')"]
       interval: 30s
@@ -25,5 +25,5 @@ services:
       start_period: 10s
 
 volumes:
-  civicprocess-storage:
+  pmga-storage:
     driver: local
