@@ -81,5 +81,53 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS process_survey_rows (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            sheet_name TEXT DEFAULT 'General',
+            row_order INTEGER DEFAULT 1,
+            -- Group 1: Scope & Strukturanalyse (Process vs. Application)
+            q01_raw_entry TEXT NOT NULL,           -- Verbatim cell, e.g. 'Gutscheinsystem'
+            q02_entry_kind TEXT DEFAULT 'UNKNOWN', -- 'PROCESS', 'APPLICATION', 'CATEGORY'
+            q03_process_name TEXT,                 -- Actual business process if q02 is APPLICATION
+            q04_owner_role TEXT,                   -- Responsible department / role
+            -- Group 2: Trigger & Handbook vs. Lived Reality
+            q05_trigger_event TEXT,                -- How the process starts
+            q06_in_handbook TEXT,                  -- 'YES', 'NO', 'PARTIAL'
+            q07_lived_reality_notes TEXT,          -- Verbatim day-to-day process steps
+            -- Group 3: Data Assets & Storage (VVT)
+            q08_input_data_mandatory TEXT,         -- Data required to start/complete
+            q09_input_data_optional TEXT,          -- Data that can be missing while process still completes
+            q10_output_data TEXT,                  -- Data produced at the end
+            q11_storage_location TEXT,             -- Where data is stored (system, DB, share, paper)
+            -- Group 4: Exceptions & Repeatability
+            q12_exception_path TEXT,               -- What happens if data is missing or rejected
+            q13_is_repeatable INTEGER DEFAULT 0,   -- 1 if activities can repeat with different outcomes
+            -- Group 5: Criticality (BSI 200-2 CIA & BSI 200-4 BIA)
+            q14_raw_criticality TEXT,              -- Verbatim label from Excel, e.g. 'kritisch'
+            q15_cia_confidentiality TEXT,          -- 'Normal', 'High', 'Very High' + reason
+            q16_cia_integrity TEXT,                -- 'Normal', 'High', 'Very High' + reason
+            q17_cia_availability TEXT,             -- 'Normal', 'High', 'Very High' + reason
+            q18_bia_mtpd_rto TEXT,                 -- Max tolerable downtime (MTPD) & target recovery (RTO)
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS accepted_concepts (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            concept_type TEXT NOT NULL, -- 'SYSTEM', 'DATA_ASSET', 'ROLE', 'TRIGGER'
+            source_text TEXT NOT NULL,  -- Original verbatim text from participant
+            label TEXT NOT NULL,        -- Moderated display label for checklist/radio injection
+            status TEXT DEFAULT 'ACCEPTED', -- 'PENDING', 'ACCEPTED', 'REJECTED'
+            session_token TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_survey_project_order ON process_survey_rows(project_id, row_order);
+        CREATE INDEX IF NOT EXISTS idx_concepts_lookup ON accepted_concepts(project_id, concept_type, status);
         """)
 

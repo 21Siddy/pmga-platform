@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PMGA — Process Management and Gap Analysis</title>
-  <meta name="description" content="Process Management and ISO 27002 Gap Analysis Workbench for Critical Infrastructure and Public Administration">
+  <title>PMGA — Process Management &amp; Gap Analysis Workbench</title>
+  <meta name="description" content="Non-blocking Process Management, Verbatim Survey, and ISO 27002 Gap Analysis Workbench for Critical Infrastructure and Municipalities">
 
   <!-- Typography: Plus Jakarta Sans + Newsreader + JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,158 +20,277 @@
 </head>
 <body>
 
-  <!-- Navigation & Header Bar -->
+  <!-- Top Navigation & Header Bar -->
   <header class="app-header">
     <div class="brand">
       <div class="brand-crest">PMGA</div>
       <div class="brand-titles">
         <h1>PMGA</h1>
-        <span class="subtitle">Process Management &amp; Gap Analysis</span>
+        <span class="subtitle">Process Management &amp; Resilience Workbench</span>
       </div>
     </div>
 
+    <!-- Active Assessment Selector -->
     <div class="project-indicator">
-      <span class="label">ACTIVE ASSESSMENT:</span>
+      <label for="select-active-project" class="label">ASSESSMENT:</label>
       <select id="select-active-project" class="civic-select">
         <option value="">Select or Create an Assessment...</option>
       </select>
-      <button id="btn-new-project" class="pill-btn secondary">+ New</button>
+      <button id="btn-new-project-toggle" class="pill-btn secondary">+ New</button>
+      
+      <!-- Inline Creation Bar (Replaces window.prompt) -->
+      <div id="new-project-inline" class="new-project-inline hidden">
+        <input type="text" id="input-new-project-title" class="civic-input" placeholder="e.g. Stadtwerke Voucher &amp; IT Process Review">
+        <button id="btn-create-project-confirm" class="pill-btn primary">Create</button>
+        <button id="btn-create-project-cancel" class="pill-btn secondary">Cancel</button>
+      </div>
     </div>
 
-    <div class="byok-settings">
-      <button id="btn-byok-modal" class="byok-status-btn unconfigured">
+    <!-- Global Actions & LLM Status -->
+    <div class="header-actions">
+      <button id="btn-header-export-excel" class="pill-btn secondary" title="Export multi-sheet Excel with ISO Gap Assessment and Verbatim Survey">
+        Download Excel (.xlsx)
+      </button>
+      <button id="btn-byok-modal" class="byok-status-btn unconfigured" title="Configure LLM API Provider">
         <span class="dot"></span>
-        <span id="byok-label">LLM Engine: Check Status</span>
+        <span id="byok-label">LLM: Check Status</span>
       </button>
     </div>
   </header>
 
-  <!-- Step Workflow Tabs -->
+  <!-- Calm Step Navigation Tabs -->
   <nav class="workflow-tabs">
     <button class="tab-btn active" data-tab="tab-intake">
-      <span class="step-num">1</span> Process Intake &amp; Evidence
+      <span class="step-num">1</span> Intake &amp; Guided Survey
     </button>
     <button class="tab-btn" data-tab="tab-bpmn">
       <span class="step-num">2</span> Interactive BPMN 2.0 Studio
     </button>
     <button class="tab-btn" data-tab="tab-iso">
-      <span class="step-num">3</span> ISO 27002 Checklist (93 Controls)
-    </button>
-    <button class="tab-btn" data-tab="tab-gaps">
-      <span class="step-num">4</span> Plain-English Gap Dashboard
+      <span class="step-num">3</span> ISO 27002 Controls &amp; Gap Report
     </button>
   </nav>
+
+  <!-- Non-Blocking Status Toast -->
+  <div id="status-toast" class="status-toast hidden" role="status" aria-live="polite">
+    <span id="toast-message">Ready</span>
+    <button id="toast-dismiss" aria-label="Dismiss">&times;</button>
+  </div>
 
   <!-- Main Application Body -->
   <main class="app-main">
 
-    <!-- TAB 1: Intake & Evidence -->
+    <!-- TAB 1: Intake & Guided Survey (Primary Entrypoint) -->
     <section id="tab-intake" class="tab-pane active">
-      <div class="intake-hero">
-        <h2>Ingest Operational Evidence &amp; Process Descriptions</h2>
-        <p>Enter free-text operational field notes, shorthand, or upload handbooks. The scientific pipeline extracts atomic steps and compares actual practice against formal policies.</p>
-      </div>
-
-      <!-- Quick Benchmark Loader -->
-      <div class="benchmark-box">
-        <div class="benchmark-header">
-          <span class="badge-accent">EMPIRICAL BENCHMARKS</span>
-          <h3>Verified Public Sector &amp; Critical Infrastructure Case Studies</h3>
-        </div>
-        <div id="benchmarks-list" class="benchmarks-grid">
-          <div class="loading-state">Loading empirical case studies...</div>
-        </div>
-      </div>
-
-      <!-- Ground-Truth Corpus & Linguistic Style Testing (Matei et al. / Lê et al.) -->
-      <div class="benchmark-box corpus-box" style="margin-top: 1rem; border-color: #3b82f6;">
-        <div class="benchmark-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-          <div>
-            <span class="badge-accent" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">GROUND-TRUTH CORPUS &amp; BENCHMARK TESTING</span>
-            <h3 style="margin: 0.25rem 0 0 0;">12 Structural Archetypes &amp; Matei et al. (2026) 4-Style Generator</h3>
+      
+      <!-- Progressive Disclosure: Benchmarks & Archetypes Collapsible Drawer -->
+      <details class="disclosure-drawer" id="details-benchmarks">
+        <summary class="disclosure-summary">
+          <span>Reference Benchmarks &amp; 12-Model Ground-Truth Corpus</span>
+          <span class="disclosure-hint">(Click to load verified public sector and corporate case studies)</span>
+        </summary>
+        <div class="disclosure-body">
+          <div class="corpus-grid-row">
+            <div class="corpus-control-group">
+              <label for="select-corpus-model">Ground-Truth Model:</label>
+              <select id="select-corpus-model" class="civic-select">
+                <option value="">-- Choose Ground-Truth Archetype (12 Models) --</option>
+              </select>
+            </div>
+            <div class="corpus-control-group">
+              <label for="select-corpus-style">Linguistic Style:</label>
+              <select id="select-corpus-style" class="civic-select">
+                <option value="formal">1. Formal English</option>
+                <option value="shorthand">2. Messy Shorthand (-&gt;)</option>
+                <option value="out_of_order">3. Out-of-Order Sentences</option>
+                <option value="parallel_and_loop">4. Concurrency &amp; Loops</option>
+              </select>
+            </div>
+            <button id="btn-load-corpus-style" class="pill-btn secondary">Load Style into Notes</button>
+            <button id="btn-load-corpus-bpmn" class="pill-btn secondary">View Ground-Truth BPMN &rarr;</button>
           </div>
-          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <select id="select-corpus-model" class="civic-select" style="min-width: 240px; font-size: 0.82rem;">
-              <option value="">-- Choose Ground-Truth Archetype --</option>
-            </select>
-            <select id="select-corpus-style" class="civic-select" style="font-size: 0.82rem;">
-              <option value="formal">1. Formal English</option>
-              <option value="shorthand">2. Messy Shorthand (-&gt;)</option>
-              <option value="out_of_order">3. Out-of-Order Sentences</option>
-              <option value="parallel_and_loop">4. Concurrency &amp; Loops</option>
-            </select>
-            <button id="btn-load-corpus-style" class="pill-btn secondary" style="font-size: 0.82rem; padding: 0.4rem 0.8rem;">
-              Load Style into Notes
-            </button>
-            <button id="btn-load-corpus-bpmn" class="pill-btn secondary" style="font-size: 0.82rem; padding: 0.4rem 0.8rem;">
-              View Ground-Truth Diagram &rarr;
-            </button>
+          <div id="corpus-model-info" class="corpus-model-info hidden">
+            <span id="corpus-archetype-tag"></span> &bull; 
+            <span id="corpus-ref-tag"></span> &bull; 
+            Nodes: <span id="corpus-nodes-count"></span>, Edges: <span id="corpus-edges-count"></span>
+          </div>
+
+          <div class="benchmarks-subgrid" style="margin-top: 1rem;">
+            <h4>Verified Municipal &amp; Infrastructure Case Studies:</h4>
+            <div id="benchmarks-list" class="benchmarks-compact-list">
+              <span class="loading-state">Loading empirical case studies...</span>
+            </div>
           </div>
         </div>
-        <div id="corpus-model-info" style="font-size: 0.8rem; color: #64748b; margin-top: 0.5rem; display: none;">
-          <span id="corpus-archetype-tag" style="font-weight: 600; color: #1e293b;"></span> &bull; 
-          <span id="corpus-ref-tag"></span> &bull; 
-          Nodes: <span id="corpus-nodes-count"></span>, Edges: <span id="corpus-edges-count"></span>
-        </div>
-      </div>
+      </details>
 
-      <div class="intake-split-grid">
-        <!-- Panel A: Operational Reality -->
-        <div class="intake-card reality-card">
-          <div class="card-tag actual">OPERATIONAL REALITY (WHAT STAFF ACTUALLY DO)</div>
-          <h3>Lived Staff Practices &amp; Free-Text Notes</h3>
-          <p class="card-desc">Type raw field notes, workarounds, or shorthand. Grammatical perfection is NOT required.</p>
-          <textarea id="input-actual-process" class="civic-textarea" placeholder="e.g. portal times out -> citizen emails cad file -> clerk saves to C:\Downloads -> copy to USB stick for inspector -> stamped paper copy filed in binder"></textarea>
+      <!-- Clean Intake Ingest Area -->
+      <div class="intake-section">
+        <div class="intake-split-grid">
           
-          <div class="file-upload-row">
-            <label class="file-label">
-              <span>Upload Notes / Handbook / .bpmn XML</span>
-              <input type="file" id="file-actual-process" accept=".pdf,.docx,.txt,.md,.bpmn,.xml">
-            </label>
-            <span id="file-actual-name" class="uploaded-filename">No file chosen</span>
+          <!-- Panel A: Operational Reality / Upload -->
+          <div class="intake-card reality-card">
+            <div class="card-header-row">
+              <h3>Operational Evidence &amp; Process Notes</h3>
+              <span class="card-tag actual">Lived Staff Reality</span>
+            </div>
+            <p class="card-desc">Paste field notes or drop a multi-sheet Excel (.xlsx), Word (.docx), PDF, or .bpmn file. Preserves sheet names and cell text verbatim.</p>
+            
+            <textarea id="input-actual-process" class="civic-textarea" placeholder="Paste staff notes, shorthand (->), or dump Excel entries (e.g. HR System, Gutscheinsystem, Rechnungssystem - kritisch)..."></textarea>
+            
+            <div class="file-upload-row">
+              <label class="file-label">
+                <span>Upload Excel / Document / .bpmn</span>
+                <input type="file" id="file-actual-process" accept=".xlsx,.xlsm,.xltx,.csv,.pdf,.docx,.txt,.md,.bpmn,.xml">
+              </label>
+              <span id="file-actual-name" class="uploaded-filename">No file selected</span>
+            </div>
           </div>
+
+          <!-- Panel B: Formal Policy / Rules -->
+          <div class="intake-card policy-card">
+            <div class="card-header-row">
+              <h3>Formal Mandate &amp; Policy Context</h3>
+              <span class="card-tag formal">Official Policy</span>
+            </div>
+            <p class="card-desc">Official guidelines, statutory directives, or handbook rules to evaluate compliance and operational drift against.</p>
+            
+            <textarea id="input-formal-policy" class="civic-textarea" placeholder="e.g. Directive SEC-2023: All records must be archived in central DMS. Unencrypted USB storage and manual email handoffs strictly prohibited..."></textarea>
+
+            <div class="file-upload-row">
+              <label class="file-label">
+                <span>Upload Directive / Handbook</span>
+                <input type="file" id="file-formal-policy" accept=".pdf,.docx,.txt,.md">
+              </label>
+              <span id="file-formal-name" class="uploaded-filename">No file selected</span>
+            </div>
+          </div>
+
         </div>
 
-        <!-- Panel B: Formal Policy / Rules -->
-        <div class="intake-card policy-card">
-          <div class="card-tag formal">FORMAL POLICY / MANDATES (WHAT THE RULES STATE)</div>
-          <h3>Official Policies &amp; Council Directives</h3>
-          <p class="card-desc">Official guidelines or statutory rules to evaluate compliance against.</p>
-          <textarea id="input-formal-policy" class="civic-textarea" placeholder="e.g. Directive SEC-2023: All citizen records must be uploaded via TLS 1.3 portal. Unencrypted USB media and personal email transfer strictly prohibited..."></textarea>
-
-          <div class="file-upload-row">
-            <label class="file-label">
-              <span>Upload Directive / Handbook</span>
-              <input type="file" id="file-formal-policy" accept=".pdf,.docx,.txt,.md">
-            </label>
-            <span id="file-formal-name" class="uploaded-filename">No file chosen</span>
-          </div>
+        <div class="intake-actions-bar">
+          <button id="btn-generate-bpmn" class="pill-btn primary large">
+            Generate Diagram &amp; Start Guided Survey &rarr;
+          </button>
         </div>
       </div>
 
-      <div class="intake-footer">
-        <button id="btn-generate-bpmn" class="pill-btn primary large">
-          Run Scientific BPMN Generation &amp; Verification &rarr;
-        </button>
+      <!-- Non-Blocking Guided Survey & Verbatim Sheet Workspace -->
+      <div id="survey-workspace" class="survey-workspace">
+        <div class="survey-header-bar">
+          <div>
+            <h3>Verbatim Process Survey &amp; Discovery Interview</h3>
+            <span id="survey-progress-label" class="subtext">0 items recorded</span>
+          </div>
+          <div class="survey-progress-pill">
+            <div id="survey-progress-bar" class="progress-fill" style="width: 0%;"></div>
+            <span id="survey-progress-text">0% Complete</span>
+          </div>
+        </div>
+
+        <div class="survey-split-layout">
+          
+          <!-- Left Column: Active Question Card + Verbatim Sheet Table -->
+          <div class="survey-left-col">
+            
+            <!-- 1. The Single Active Question Card -->
+            <div id="active-question-card" class="question-card">
+              <div class="question-card-top">
+                <span id="q-phase-badge" class="phase-badge">Phase: Scope &amp; Strukturanalyse</span>
+                <span id="q-row-badge" class="row-badge">Focused: Gutscheinsystem</span>
+              </div>
+
+              <h4 id="q-title-text" class="question-text">
+                Which business process uses the 'Gutscheinsystem' system?
+              </h4>
+
+              <!-- Prelead Dynamic Option Chips -->
+              <div id="q-chips-container" class="chips-container">
+                <span class="chips-label">Accepted Concepts (Click to fill):</span>
+                <div id="q-chips-list" class="chips-list"></div>
+              </div>
+
+              <!-- Verbatim Answer Input -->
+              <div class="question-input-group">
+                <input type="text" id="q-answer-input" class="civic-input full-width" placeholder="Type verbatim answer (e.g. Gutscheinausstellung und Einlösung)...">
+              </div>
+
+              <!-- Repeatable Activity Loop Checkbox -->
+              <div class="repeatable-checkbox-row">
+                <label>
+                  <input type="checkbox" id="chk-is-repeatable">
+                  <span>Can this activity repeat in a loop with revisions or different outcomes?</span>
+                </label>
+              </div>
+
+              <div class="question-actions-row">
+                <button id="btn-save-survey-answer" class="pill-btn primary">Save &amp; Next Question &rarr;</button>
+                <button id="btn-skip-survey-question" class="pill-btn secondary">Skip</button>
+              </div>
+            </div>
+
+            <!-- 2. Verbatim Rows Overview Table -->
+            <div class="verbatim-table-card">
+              <div class="table-card-header">
+                <h4>Recorded Process &amp; System Entries</h4>
+                <span class="subtext">Click any row to answer its questions</span>
+              </div>
+              <div class="table-scroll-container">
+                <table class="civic-table" id="survey-rows-table">
+                  <thead>
+                    <tr>
+                      <th width="8%">#</th>
+                      <th width="32%">Raw Dump Entry</th>
+                      <th width="18%">BSI Kind</th>
+                      <th width="24%">Associated Process</th>
+                      <th width="18%">Progress</th>
+                    </tr>
+                  </thead>
+                  <tbody id="survey-rows-tbody">
+                    <tr><td colspan="5" class="empty-state">No rows ingested yet. Drop an Excel file or paste process notes above.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right Column: Live BPMN Diagram Preview -->
+          <div class="survey-right-col">
+            <div class="preview-card">
+              <div class="preview-card-header">
+                <h4>Live Process Diagram (BPMN 2.0)</h4>
+                <div class="preview-header-actions">
+                  <button id="btn-open-full-studio" class="pill-btn secondary">Open Full Studio &rarr;</button>
+                </div>
+              </div>
+              <div class="preview-canvas-wrapper">
+                <div id="survey-preview-canvas" class="bpmn-canvas"></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
+
     </section>
 
-    <!-- TAB 2: BPMN 2.0 Studio -->
+    <!-- TAB 2: Full Interactive BPMN 2.0 Studio -->
     <section id="tab-bpmn" class="tab-pane">
       <div class="bpmn-toolbar">
         <div class="toolbar-title">
-          <h2 id="bpmn-canvas-title">Interactive BPMN 2.0 Canvas</h2>
-          <span class="subtext">Fully editable open standard diagram with live box resizer and mathematical verification metrics.</span>
+          <h2 id="bpmn-canvas-title">Interactive BPMN 2.0 Studio</h2>
+          <span class="subtext">Standards-compliant BPMN 2.0 diagram with live element dimension resizer and mathematical verification metrics.</span>
         </div>
         <div class="toolbar-buttons">
           <button id="btn-save-bpmn" class="pill-btn secondary">Save Diagram Edits</button>
           <button id="btn-export-bpmn" class="pill-btn secondary">Export .bpmn (XML)</button>
           <button id="btn-export-svg" class="pill-btn secondary">Export .svg</button>
-          <button id="btn-proceed-to-iso" class="pill-btn primary">Proceed to ISO Checklist &rarr;</button>
+          <button id="btn-proceed-to-iso" class="pill-btn primary">Proceed to ISO Baseline &rarr;</button>
         </div>
       </div>
 
-      <!-- Scientific Verification Telemetry Banner -->
+      <!-- Scientific Verification Telemetry Scorecard -->
       <div id="telemetry-bar" class="telemetry-bar hidden">
         <div class="telemetry-metric">
           <span class="t-label">STRUCTURAL SOUNDNESS:</span>
@@ -184,11 +303,11 @@
         <div class="telemetry-detail" id="t-detail">Verified 0 defects.</div>
       </div>
 
-      <!-- Interactive Node Resizer Toolbar (Point #7) -->
+      <!-- Element Resizer Bar -->
       <div class="bpmn-dimension-bar">
         <span class="dim-label">SELECTED ELEMENT SIZE:</span>
-        <label>Width: <input type="number" id="node-width-input" class="dim-input" value="130" step="10" min="60" max="400"> px</label>
-        <label>Height: <input type="number" id="node-height-input" class="dim-input" value="80" step="10" min="40" max="300"> px</label>
+        <label>W: <input type="number" id="node-width-input" class="dim-input" value="130" step="10" min="60" max="400"> px</label>
+        <label>H: <input type="number" id="node-height-input" class="dim-input" value="80" step="10" min="40" max="300"> px</label>
         <button id="btn-preset-compact" class="dim-btn">Compact</button>
         <button id="btn-preset-standard" class="dim-btn active">Standard</button>
         <button id="btn-preset-wide" class="dim-btn">Wide</button>
@@ -200,12 +319,14 @@
       </div>
     </section>
 
-    <!-- TAB 3: ISO 27002 Controls Explorer -->
+    <!-- TAB 3: ISO 27002 Controls & Gap Report -->
     <section id="tab-iso" class="tab-pane">
+      
+      <!-- Top Actions & Run Analysis -->
       <div class="iso-header">
         <div class="iso-title">
-          <h2>ISO/IEC 27002:2022 Control Baseline (93 Controls)</h2>
-          <p>Complete 93-control catalog. Click 'Inspect Details' on any control for audit requirements, common gaps, and compensating controls.</p>
+          <h2>ISO/IEC 27002:2022 Baseline &amp; Gap Analysis</h2>
+          <p>Assess lived operational practices against the 93 international cybersecurity controls to identify gaps and actionable compensating controls.</p>
         </div>
         <div class="iso-actions">
           <select id="filter-iso-chapter" class="civic-select">
@@ -215,39 +336,10 @@
             <option value="7. Physical">Chapter 7: Physical (14)</option>
             <option value="8. Technological">Chapter 8: Technological (34)</option>
           </select>
-          <input type="text" id="filter-iso-search" class="civic-input" placeholder="Search controls (e.g. MFA, backup, vendor)...">
+          <input type="text" id="filter-iso-search" class="civic-input" placeholder="Search controls (e.g. access, backup, password)...">
           <button id="btn-run-gap-analysis" class="pill-btn primary">
             Run Plain-English Gap Analysis &rarr;
           </button>
-        </div>
-      </div>
-
-      <div class="iso-table-container">
-        <table class="civic-table" id="iso-controls-table">
-          <thead>
-            <tr>
-              <th width="10%">ID</th>
-              <th width="22%">Control Title</th>
-              <th width="18%">Chapter / Domain</th>
-              <th width="35%">Plain English Requirement</th>
-              <th width="15%">Action</th>
-            </tr>
-          </thead>
-          <tbody id="iso-controls-tbody"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- TAB 4: Plain English Gap Dashboard -->
-    <section id="tab-gaps" class="tab-pane">
-      <div class="gap-dashboard-header">
-        <div class="dashboard-title">
-          <h2>Executive Compliance &amp; Operational Gap Findings</h2>
-          <p>Plain-English breakdown of identified gaps, incident risks, who to consult, and pragmatic risk-based compensating controls.</p>
-        </div>
-        <div class="dashboard-actions">
-          <button id="btn-export-excel-report" class="pill-btn secondary">Download Annotated Excel (.xlsx)</button>
-          <button id="btn-gdpr-purge" class="pill-btn danger">GDPR 1-Click Project Purge</button>
         </div>
       </div>
 
@@ -275,17 +367,53 @@
         </div>
       </div>
 
+      <!-- Executive Summary Box -->
       <div class="executive-summary-box" id="exec-summary-box">
         <h3>Executive Assessment Summary</h3>
         <p id="exec-summary-text">Run gap analysis to evaluate process alignment.</p>
       </div>
 
-      <div class="findings-container" id="findings-container"></div>
+      <!-- Gap Findings List -->
+      <div class="gap-findings-wrapper">
+        <div class="findings-header-row">
+          <h3>Identified Operational Gaps &amp; Compensating Controls</h3>
+          <div class="gap-action-buttons">
+            <button id="btn-export-excel-report" class="pill-btn secondary">Download Annotated Excel (.xlsx)</button>
+            <button id="btn-gdpr-purge" class="pill-btn danger">GDPR 1-Click Project Purge</button>
+          </div>
+        </div>
+        <div class="findings-container" id="findings-container"></div>
+      </div>
+
+      <!-- Collapsible ISO 27002 Controls Catalog Table -->
+      <details class="disclosure-drawer" style="margin-top: 2rem;">
+        <summary class="disclosure-summary">
+          <span>View Full ISO/IEC 27002:2022 Catalog (93 Controls)</span>
+          <span class="disclosure-hint">(Click to expand table and inspect audit requirements)</span>
+        </summary>
+        <div class="disclosure-body" style="padding: 0;">
+          <div class="iso-table-container">
+            <table class="civic-table" id="iso-controls-table">
+              <thead>
+                <tr>
+                  <th width="10%">ID</th>
+                  <th width="22%">Control Title</th>
+                  <th width="18%">Chapter / Domain</th>
+                  <th width="35%">Plain English Requirement</th>
+                  <th width="15%">Action</th>
+                </tr>
+              </thead>
+              <tbody id="iso-controls-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
     </section>
 
   </main>
 
-  <!-- ACCESSIBLE ISO CONTROL DETAIL MODAL DRAWER (Screenshot #1 Fix) -->
+  <!-- ACCESSIBLE ISO CONTROL DETAIL MODAL -->
   <div id="modal-iso-detail" class="civic-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-iso-title">
     <div class="civic-modal large">
       <div class="modal-header">
@@ -295,9 +423,7 @@
         </div>
         <button class="modal-close" id="btn-close-iso-detail" aria-label="Close modal">&times;</button>
       </div>
-      <div class="modal-body" id="modal-iso-body">
-        <!-- Rendered with structured cards -->
-      </div>
+      <div class="modal-body" id="modal-iso-body"></div>
       <div class="modal-footer">
         <button id="btn-dismiss-iso-detail" class="pill-btn primary">Close</button>
       </div>
@@ -312,11 +438,11 @@
         <button class="modal-close" id="btn-close-byok">&times;</button>
       </div>
       <div class="modal-body">
-        <p>Supports <strong>Google Gemini</strong> (e.g. <code>gemini-3.8-flash</code>) and <strong>University KI-Connect</strong> (OpenAI-compatible <code>mistral-small-4-119b</code>). Requests are paced through an automatic rate-limit queue.</p>
+        <p>Supports <strong>Google Gemini</strong> and <strong>University KI-Connect</strong> (OpenAI-compatible). Requests are paced through an automatic rate-limit queue.</p>
         
         <div class="form-group">
           <label for="select-llm-provider">Active Provider</label>
-          <select id="select-llm-provider" class="civic-select">
+          <select id="select-llm-provider" class="civic-select full-width">
             <option value="gemini">Google Gemini (gemini-3.8-flash)</option>
             <option value="kiconnect">University KI-Connect (OpenAI Compatible)</option>
           </select>
@@ -324,7 +450,7 @@
 
         <div id="gemini-key-group" class="form-group">
           <label for="input-gemini-key">Gemini API Key</label>
-          <input type="password" id="input-gemini-key" class="civic-input" placeholder="AIzaSy...">
+          <input type="password" id="input-gemini-key" class="civic-input full-width" placeholder="AIzaSy...">
         </div>
 
         <div id="kiconnect-info-group" class="form-group hidden">
@@ -334,10 +460,10 @@
           </div>
         </div>
 
-        <div class="checkbox-row">
+        <div class="checkbox-row" style="margin-top: 12px;">
           <label>
             <input type="checkbox" id="chk-save-local" checked>
-            Remember session configuration
+            <span>Remember session configuration</span>
           </label>
         </div>
       </div>

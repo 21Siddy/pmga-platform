@@ -6,6 +6,7 @@
 class BPMNStudio {
   constructor(canvasContainerId) {
     this.container = document.getElementById(canvasContainerId);
+    this.containerId = canvasContainerId;
     this.modeler = null;
     this.currentXml = null;
     this.selectedElement = null;

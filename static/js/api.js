@@ -190,5 +190,23 @@ const API = {
       })
     });
     return this.handleResponse(res);
+  },
+
+  async getSurvey(projectId) {
+    const res = await fetch(`/api/v1/projects/${projectId}/survey`);
+    return this.handleResponse(res);
+  },
+
+  async answerSurveyQuestion(projectId, rowId, questionCode, answer, acceptAsConcept = true) {
+    const res = await fetch(`/api/v1/projects/${projectId}/survey/${rowId}/answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question_code: questionCode,
+        answer: answer,
+        accept_as_concept: acceptAsConcept
+      })
+    });
+    return this.handleResponse(res);
   }
 };

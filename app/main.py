@@ -22,6 +22,7 @@ from app.services.perturbation_engine import PerturbationEngine
 from app.services.matei_evaluator import MateiEvaluator, EvaluationMetrics
 from app.seed.corpus_builder import CORPUS_MODELS
 from app.services.gap_analyzer import GapAnalyzer
+from app.services.survey_service import SurveyService
 
 logger = logging.getLogger(__name__)
 
@@ -203,12 +204,63 @@ async def upload_document(
             (doc_id, project_id, file.filename, save_path, doc_type, extracted, pii_report["redacted_text"], json.dumps(pii_report["detections"]))
         )
 
+    # Automatic non-blocking survey row extraction
+    survey_count = 0
+    ext = os.path.splitext(safe_filename)[1].lower()
+    if ext in ['.xlsx', '.xlsm', '.xltx']:
+        try:
+            sheets = DocumentService.extract_excel_sheets(save_path)
+            items = []
+            for s in sheets:
+                sname = s["sheet_name"]
+                for r in s["rows"]:
+                    raw_list = r["raw_list"]
+                    if not raw_list:
+                        continue
+                    first_col = raw_list[0]
+                    # check for criticality in remaining cols
+                    crit = ""
+                    for cell_val in raw_list[1:]:
+                        if any(c in cell_val.lower() for c in ["kritisch", "critical", "hoch", "high"]):
+                            crit = cell_val
+                            break
+                    items.append({
+                        "sheet_name": sname,
+                        "raw_entry": first_col,
+                        "raw_criticality": crit
+                    })
+            if items:
+                inserted_ids = SurveyService.ingest_rows_into_survey(project_id, items)
+                survey_count = len(inserted_ids)
+                # Non-blockingly compile initial BPMN diagram
+                graph = SurveyService.compile_survey_to_bpmn_graph(project_id)
+                bpmn_xml = BPMNEngine.compile_graph_to_bpmn_xml(graph)
+                with get_db() as conn:
+                    conn.execute(
+                        "INSERT INTO bpmn_models (id, project_id, title, version, bpmn_xml, graph_json) VALUES (?, ?, ?, ?, ?, ?)",
+                        (str(uuid.uuid4()), project_id, graph.process_title, 1, bpmn_xml, graph.model_dump_json())
+                    )
+        except Exception as e:
+            logger.warning(f"Excel survey auto-ingest warning: {e}")
+    elif doc_type == "ACTUAL_PROCESS":
+        try:
+            with get_db() as conn:
+                existing = conn.execute("SELECT COUNT(*) as cnt FROM process_survey_rows WHERE project_id = ?", (project_id,)).fetchone()
+                if existing and existing["cnt"] == 0:
+                    actions = BPMNVerifier.extract_atomic_actions(extracted)
+                    if actions:
+                        items = [{"sheet_name": "General", "raw_entry": a} for a in actions]
+                        SurveyService.ingest_rows_into_survey(project_id, items)
+        except Exception as e:
+            logger.warning(f"Text survey auto-ingest warning: {e}")
+
     return {
         "id": doc_id,
         "filename": file.filename,
         "doc_type": doc_type,
         "character_count": len(extracted),
-        "pii_report": pii_report
+        "pii_report": pii_report,
+        "survey_rows_created": survey_count
     }
 
 # 4. BPMN Generation with Scientific Verification
@@ -335,7 +387,7 @@ def run_gap_analysis(
 
     return result.model_dump()
 
-# 7. Exports (.bpmn, .xlsx Gap Workbook)
+# 7. Exports (.bpmn, .xlsx Gap & Survey Workbook)
 @app.get("/api/v1/export/excel/{project_id}")
 def export_excel_report(project_id: str):
     with get_db() as conn:
@@ -343,6 +395,7 @@ def export_excel_report(project_id: str):
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
         gaps_rows = conn.execute("SELECT * FROM gap_assessments WHERE project_id = ?", (project_id,)).fetchall()
+        survey_rows = conn.execute("SELECT * FROM process_survey_rows WHERE project_id = ? ORDER BY row_order ASC", (project_id,)).fetchall()
         
     gaps_list = []
     for g in gaps_rows:
@@ -354,7 +407,12 @@ def export_excel_report(project_id: str):
 
     file_name = f"PMGA_ISO27002_Gap_Report_{project_id[:8]}.xlsx"
     out_path = os.path.join(settings.exports_path, file_name)
-    ISOExcelService.export_annotated_gap_report(out_path, proj["title"], gaps_list)
+    ISOExcelService.export_annotated_gap_report(
+        output_path=out_path,
+        project_title=proj["title"],
+        gap_assessments=gaps_list,
+        survey_rows=[dict(r) for r in survey_rows]
+    )
     return FileResponse(out_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=file_name)
 
 @app.get("/api/v1/export/bpmn/{project_id}")
@@ -369,12 +427,60 @@ def export_bpmn_xml(project_id: str):
             f.write(bpmn["bpmn_xml"])
     return FileResponse(out_path, media_type="application/xml", filename=file_name)
 
-# 8. GDPR Data Erasure / 1-Click Cryptographic Wipe
+# 8. Verbatim Survey & Prelead Options API
+class SurveyAnswerRequest(BaseModel):
+    question_code: str
+    answer: str
+    accept_as_concept: Optional[bool] = True
+
+@app.get("/api/v1/projects/{project_id}/survey")
+def get_project_survey(project_id: str):
+    return SurveyService.get_survey_state(project_id)
+
+@app.post("/api/v1/projects/{project_id}/survey/{row_id}/answer")
+def answer_survey_question(project_id: str, row_id: str, req: SurveyAnswerRequest):
+    try:
+        updated_state = SurveyService.save_verbatim_answer(
+            project_id=project_id,
+            row_id=row_id,
+            question_code=req.question_code,
+            answer_text=req.answer,
+            accept_as_concept=bool(req.accept_as_concept)
+        )
+        # Non-blockingly re-compile BPMN model
+        graph = SurveyService.compile_survey_to_bpmn_graph(project_id)
+        bpmn_xml = BPMNEngine.compile_graph_to_bpmn_xml(graph)
+        
+        with get_db() as conn:
+            latest = conn.execute(
+                "SELECT version FROM bpmn_models WHERE project_id = ? ORDER BY version DESC LIMIT 1",
+                (project_id,)
+            ).fetchone()
+            new_version = (latest["version"] + 1) if latest else 1
+            bpmn_id = str(uuid.uuid4())
+            conn.execute(
+                "INSERT INTO bpmn_models (id, project_id, title, version, bpmn_xml, graph_json) VALUES (?, ?, ?, ?, ?, ?)",
+                (bpmn_id, project_id, graph.process_title, new_version, bpmn_xml, graph.model_dump_json())
+            )
+
+        return {
+            "status": "success",
+            "survey": updated_state,
+            "bpmn_xml": bpmn_xml,
+            "graph": graph.model_dump(),
+            "bpmn_version": new_version
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+# 9. GDPR Data Erasure / 1-Click Cryptographic Wipe
 @app.delete("/api/v1/gdpr/purge/{project_id}")
 def gdpr_purge_project(project_id: str):
     with get_db() as conn:
         conn.execute("DELETE FROM gap_assessments WHERE project_id = ?", (project_id,))
         conn.execute("DELETE FROM bpmn_models WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM process_survey_rows WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM accepted_concepts WHERE project_id = ?", (project_id,))
         docs = conn.execute("SELECT file_path FROM documents WHERE project_id = ?", (project_id,)).fetchall()
         for d in docs:
             fp = d["file_path"]
@@ -391,7 +497,7 @@ def gdpr_purge_project(project_id: str):
         "message": f"Project {project_id} permanently expunged under GDPR Art. 17."
     }
 
-# 9. Ground-Truth Corpus & Matei et al. (2026) Evaluation Workbench
+# 10. Ground-Truth Corpus & Matei et al. (2026) Evaluation Workbench
 class CorpusParseRequest(BaseModel):
     bpmn_xml: Optional[str] = None
     title: Optional[str] = "Uploaded BPMN Process"
