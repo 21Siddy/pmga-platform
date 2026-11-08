@@ -136,6 +136,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // ============================================================================
+  // START GUIDE: one endpoint answers "where am I", the card renders it
+  // ============================================================================
+  StartGuide.init({
+    go: (action) => {
+      switch (action) {
+        case 'upload':
+          switchTab('tab-intake');
+          fileActual.focus();
+          break;
+        case 'generate':
+          switchTab('tab-intake');
+          btnGenerateBpmn.focus();
+          break;
+        case 'survey':
+          switchTab('tab-intake');
+          qAnswerInput.focus();
+          break;
+        case 'byok':
+          modalByok.classList.add('open');
+          break;
+        default:
+          break;
+      }
+    }
+  });
+
+  // ============================================================================
   // TAB NAVIGATION
   // ============================================================================
   function switchTab(tabId) {
@@ -353,6 +380,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // Load survey rows and questions
       await loadSurvey(projId);
+      await StartGuide.refresh(projId);
 
       // Load gaps if available
       if (data.gaps && data.gaps.length > 0) {
@@ -385,8 +413,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   function renderSurveyState(survey) {
     if (!survey) return;
 
-    // 1. Progress Bar
-    const progress = survey.progress || { total_slots: 0, answered_slots: 0, percent: 0, rows_count: 0 };
+    // 1. Progress Bar (fields come straight from the survey state)
+    const progress = {
+      total_slots: survey.total_slots || 0,
+      answered_slots: survey.filled_slots || 0,
+      percent: survey.completion_percent || 0,
+      rows_count: survey.total_rows || 0
+    };
     surveyProgressBar.style.width = `${progress.percent}%`;
     surveyProgressText.textContent = `${progress.percent}% Complete (${progress.answered_slots}/${progress.total_slots} slots)`;
     surveyProgressLabel.textContent = `${progress.rows_count} item${progress.rows_count === 1 ? '' : 's'} recorded in SQLite survey table`;
@@ -398,23 +431,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       surveyRowsTbody.innerHTML = rows.map((r, idx) => {
         const isFocused = focusedRowId === r.id;
-        const kindBadge = `<span class="row-badge">${r.q01_entry_kind || 'system'}</span>`;
-        const procName = r.q02_process_name || '<em style="color:var(--ink-muted)">Unlinked</em>';
+        const kindBadge = `<span class="row-badge">${escapeHtml(r.q02_entry_kind || 'unset')}</span>`;
+        const linkedProcess = r.q03_process_name
+          ? escapeHtml(r.q03_process_name)
+          : '<em style="color:var(--ink-muted)">No link yet</em>';
         return `
-          <tr class="clickable-row ${isFocused ? 'row-focused' : ''}" data-rowid="${r.id}">
+          <tr class="clickable-row ${isFocused ? 'row-focused' : ''}" data-rowid="${escapeHtml(r.id)}">
             <td><strong>#${idx + 1}</strong></td>
-            <td><strong>${escapeHtml(r.raw_entry_text)}</strong></td>
+            <td><strong>${escapeHtml(r.q01_raw_entry || '')}</strong></td>
             <td>${kindBadge}</td>
-            <td>${escapeHtml(procName)}</td>
-            <td><span class="phase-badge">${r.answered_count || 0}/14</span></td>
+            <td>${linkedProcess}</td>
+            <td><span class="phase-badge">${r.slots_filled || 0}/${r.slots_total || 0}</span></td>
           </tr>
         `;
       }).join('');
 
-      // Row click listener to focus questions on that specific entry
+      // Row click listener to focus questions on that specific entry.
+      // Row ids are UUID strings and must never pass through numeric parsing.
       surveyRowsTbody.querySelectorAll('.clickable-row').forEach(rowEl => {
         rowEl.addEventListener('click', () => {
-          focusedRowId = parseInt(rowEl.dataset.rowid, 10);
+          focusedRowId = rowEl.dataset.rowid;
           renderSurveyState(currentSurvey);
         });
       });
@@ -442,7 +478,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnSaveSurveyAnswer.disabled = false;
     btnSkipSurveyQuestion.disabled = false;
 
-    // Pick active question: if a row is explicitly focused, find its first unanswered question
+    // Pick active question: the focused row carries its own next unanswered
+    // question straight from the backend, so the frontend never guesses
+    // question codes that may not exist.
     let activeQuestion = null;
     let focusedRow = null;
 
@@ -454,37 +492,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       focusedRowId = focusedRow.id;
     }
 
-    // If global next_question matches or exists
-    if (survey.next_question && (!focusedRowId || survey.next_question.row_id === focusedRowId)) {
-      activeQuestion = survey.next_question;
-    } else if (focusedRow) {
-      // Find first null slot for this focused row
-      const candidateCodes = [
-        'q02_process_name', 'q03_trigger_event', 'q04_inputs_needed',
-        'q05_step_sequence', 'q06_actor_role', 'q07_systems_used',
-        'q08_data_created', 'q09_completion_state', 'q10_handover_target',
-        'q11_can_fail', 'q12_fallback_procedure', 'q13_is_repeatable',
-        'q14_raw_criticality'
-      ];
-      for (const code of candidateCodes) {
-        if (!focusedRow[code]) {
-          activeQuestion = {
-            row_id: focusedRow.id,
-            raw_entry: focusedRow.raw_entry_text,
-            code: code,
-            phase: 'Prozesserhebung & Struktur',
-            text: `Please specify ${code.replace(/^q\d+_/, '').replace(/_/g, ' ')} for '${focusedRow.raw_entry_text}'.`
-          };
-          break;
-        }
+    if (focusedRow) {
+      const rowQuestion = focusedRow.next_question;
+      if (rowQuestion) {
+        activeQuestion = {
+          row_id: rowQuestion.row_id || focusedRow.id,
+          raw_entry: rowQuestion.entry || focusedRow.q01_raw_entry,
+          code: rowQuestion.question_code,
+          phase: rowQuestion.phase,
+          text: rowQuestion.question_text,
+          options: rowQuestion.options || []
+        };
       }
     }
 
     if (!activeQuestion) {
       // All questions for this row or dataset answered
       qPhaseBadge.textContent = 'Phase: Discovery Complete';
-      qRowBadge.textContent = focusedRow ? escapeHtml(focusedRow.raw_entry_text) : 'All Complete';
-      qTitleText.textContent = `All initial survey questions answered for '${focusedRow ? focusedRow.raw_entry_text : 'this entry'}'. You can review the live diagram or export to Excel.`;
+      qRowBadge.textContent = focusedRow ? escapeHtml(focusedRow.q01_raw_entry || 'Entry') : 'All Complete';
+      qTitleText.textContent = `All questions answered for '${focusedRow ? focusedRow.q01_raw_entry : 'this entry'}'. You can review the live diagram or export to Excel.`;
       qChipsContainer.classList.add('hidden');
       qAnswerInput.value = '';
       activeQuestionCode = null;
@@ -497,8 +523,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     qRowBadge.textContent = `Focused: ${activeQuestion.raw_entry || 'Entry'}`;
     qTitleText.textContent = activeQuestion.text;
 
-    // Render Prelead Concepts Chips
-    const preleadList = (survey.prelead_concepts && survey.prelead_concepts[activeQuestion.code]) || [];
+    // Render accepted concept chips the backend merged into the question's options
+    const preleadList = activeQuestion.options || [];
     if (preleadList.length > 0) {
       qChipsContainer.classList.remove('hidden');
       qChipsList.innerHTML = preleadList.map(concept => `
@@ -564,6 +590,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       await loadSurvey(activeProjectId);
+      await StartGuide.refresh(activeProjectId);
       showToast('Answer recorded verbatim. Diagram updated.', 'success', 2500);
     } catch (err) {
       showToast('Failed to record answer: ' + err.message, 'error');
@@ -630,6 +657,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await API.uploadDocument(activeProjectId, 'ACTUAL_PROCESS', file);
       inputActual.value = res.pii_report.has_pii ? res.pii_report.redacted_text : inputActual.value;
       await loadSurvey(activeProjectId);
+      await StartGuide.refresh(activeProjectId);
       showToast(`'${file.name}' ingested. Verbatim survey rows generated.`, 'success');
     } catch (err) {
       showToast('Upload error: ' + err.message, 'error');
@@ -649,6 +677,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const res = await API.uploadDocument(activeProjectId, 'FORMAL_POLICY', file);
       inputFormal.value = res.pii_report.has_pii ? res.pii_report.redacted_text : inputFormal.value;
+      await StartGuide.refresh(activeProjectId);
       showToast(`Directive '${file.name}' ingested for compliance context.`, 'success');
     } catch (err) {
       showToast('Upload error: ' + err.message, 'error');
@@ -692,6 +721,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       await loadSurvey(activeProjectId);
+      await StartGuide.refresh(activeProjectId);
       showToast('BPMN diagram generated and verified.', 'success');
     } catch (err) {
       showToast('Error generating BPMN: ' + err.message, 'error');

@@ -82,7 +82,18 @@
 
     <!-- TAB 1: Intake & Guided Survey (Primary Entrypoint) -->
     <section id="tab-intake" class="tab-pane active">
-      
+
+      <!-- Where am I? Steps driven by the diagnostics endpoint -->
+      <details id="start-guide" class="disclosure-drawer" open>
+        <summary class="disclosure-summary">
+          <span>Where am I? Start here</span>
+          <span class="disclosure-hint" id="start-guide-hint">Checking your assessment...</span>
+        </summary>
+        <div class="disclosure-body">
+          <ol id="start-guide-steps" class="start-guide-steps"></ol>
+        </div>
+      </details>
+
       <!-- Progressive Disclosure: Benchmarks & Archetypes Collapsible Drawer -->
       <details class="disclosure-drawer" id="details-benchmarks">
         <summary class="disclosure-summary">
@@ -477,9 +488,10 @@
   <script src="https://unpkg.com/bpmn-js@17.11.1/dist/bpmn-modeler.production.min.js"></script>
 
   <!-- Modular Scripts -->
-  <script src="/static/js/api.js?v=2.1.0"></script>
-  <script src="/static/js/bpmn-studio.js?v=2.1.0"></script>
-  <script src="/static/js/gap-dashboard.js?v=2.1.0"></script>
-  <script src="/static/js/app.js?v=2.1.0"></script>
+  <script src="/static/js/api.js?v=2.2.0"></script>
+  <script src="/static/js/bpmn-studio.js?v=2.2.0"></script>
+  <script src="/static/js/gap-dashboard.js?v=2.2.0"></script>
+  <script src="/static/js/start-guide.js?v=2.2.0"></script>
+  <script src="/static/js/app.js?v=2.2.0"></script>
 </body>
 </html>

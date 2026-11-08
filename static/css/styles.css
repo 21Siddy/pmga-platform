@@ -354,6 +354,61 @@ body {
   padding: 22px;
 }
 
+/* --- Start Guide: click-through step list from the diagnostics endpoint --- */
+.start-guide-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.guide-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  border: var(--border-hairline);
+  border-radius: 4px;
+  background-color: var(--bg-subtle);
+  font-size: 0.82rem;
+}
+.guide-step.done {
+  opacity: 0.62;
+}
+.guide-step.todo[data-action] {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.guide-step.todo[data-action]:hover,
+.guide-step.todo[data-action]:focus-visible {
+  background-color: var(--bg-elevated);
+  outline: 1px solid var(--accent-cyan);
+}
+.guide-mark {
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+  flex: 0 0 auto;
+}
+.guide-step.done .guide-mark {
+  color: var(--accent-green, #3ea86a);
+}
+.guide-title {
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+.guide-detail {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+.guide-hint {
+  flex-basis: 100%;
+  font-size: 0.76rem;
+  color: var(--accent-cyan);
+}
+
 /* Corpus Grid Controls */
 .corpus-grid-row {
   display: flex;

@@ -15,7 +15,7 @@ def setup_test_db():
     init_db()
 
 def create_sample_kritis_excel_bytes():
-    """Builds an in-memory workbook mimicking Frank's multi-sheet organization Excel."""
+    """Builds an in-memory workbook mimicking a department's multi-sheet organization Excel."""
     wb = openpyxl.Workbook()
     # Sheet 1: Geschäftsprozesse (with applications labeled 'kritisch')
     ws1 = wb.active
@@ -38,7 +38,7 @@ def create_sample_kritis_excel_bytes():
 
 def test_multisheet_excel_ingest_and_survey():
     # 1. Create a project
-    proj_resp = client.post("/api/v1/projects", json={"title": "Frank Kritis Review", "description": "Municipal test"})
+    proj_resp = client.post("/api/v1/projects", json={"title": "RZ Frankfurt Kritis Review", "description": "Municipal test"})
     assert proj_resp.status_code == 200
     proj_id = proj_resp.json()["id"]
 

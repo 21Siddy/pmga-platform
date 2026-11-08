@@ -23,6 +23,7 @@ from app.services.matei_evaluator import MateiEvaluator, EvaluationMetrics
 from app.seed.corpus_builder import CORPUS_MODELS
 from app.services.gap_analyzer import GapAnalyzer
 from app.services.survey_service import SurveyService
+from app.services.bpmn_verifier import BPMNVerifier
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,18 @@ def load_benchmark_into_project(
             "INSERT INTO bpmn_models (id, project_id, title, version, bpmn_xml) VALUES (?, ?, ?, ?, ?)",
             (bpmn_id, target_pid, bm["title"], 1, bm["bpmn_xml"])
         )
+
+    # Extract the operational reality into the survey so the assessment
+    # actually starts on load, same as a handbook upload would.
+    try:
+        actions = BPMNVerifier.extract_atomic_actions(bm["actual_process"])
+        if actions:
+            SurveyService.ingest_rows_into_survey(
+                target_pid,
+                [{"sheet_name": "General", "raw_entry": action} for action in actions],
+            )
+    except Exception as exc:
+        logger.warning(f"Benchmark survey auto-ingest warning: {exc}")
 
     return {
         "status": "success",
@@ -479,6 +492,125 @@ def answer_survey_question(project_id: str, row_id: str, req: SurveyAnswerReques
         }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+# 8b. Project Diagnostics: what is ready, what is missing, what is next
+@app.get("/api/v1/diagnostics/{project_id}")
+def get_project_diagnostics(project_id: str):
+    """Answers, in one place, why a project is not further along yet."""
+    with get_db() as conn:
+        project = conn.execute("SELECT id, title, created_at FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        doc_rows = conn.execute(
+            "SELECT doc_type, COUNT(*) AS cnt FROM documents WHERE project_id = ? GROUP BY doc_type",
+            (project_id,)
+        ).fetchall()
+        bpmn_count = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM bpmn_models WHERE project_id = ?",
+            (project_id,)
+        ).fetchone()["cnt"]
+        survey_state = SurveyService.get_survey_state(project_id)
+
+    doc_counts = {row["doc_type"]: row["cnt"] for row in doc_rows}
+    actual_docs = doc_counts.get("ACTUAL_PROCESS", 0)
+    policy_docs = doc_counts.get("FORMAL_POLICY", 0)
+    survey_rows = survey_state["total_rows"]
+    filled = survey_state["filled_slots"]
+    total = survey_state["total_slots"]
+    percent = survey_state["completion_percent"]
+
+    from app.services.mapping_verifier import verify_catalog
+
+    standards = verify_catalog()
+
+    llm_status = LLMClient.get_provider_status()
+    any_key = bool(llm_status["gemini"]["configured"] or llm_status["kiconnect"]["configured"])
+
+    if actual_docs == 0 and policy_docs == 0:
+        upload_hint = "One upload per file: internal sheet first, then the handbook."
+    elif actual_docs == 0:
+        upload_hint = "Add the internal Excel or process notes file."
+    else:
+        upload_hint = "Add the handbook or policy file."
+
+    steps = [
+        {
+            "id": "create_project",
+            "title": "Create the assessment",
+            "done": True,
+            "detail": project["title"],
+            "hint": "",
+            "action": "none",
+        },
+        {
+            "id": "upload_documents",
+            "title": "Upload the handbook and the internal sheet",
+            "done": actual_docs > 0 and policy_docs > 0,
+            "detail": f"{actual_docs} operational, {policy_docs} policy",
+            "hint": upload_hint,
+            "action": "upload",
+        },
+        {
+            "id": "extract_structure",
+            "title": "Review what was extracted",
+            "done": survey_rows > 0,
+            "detail": f"{survey_rows} entries recorded",
+            "hint": "Drop your Excel sheet or paste notes above, then generate.",
+            "action": "upload",
+        },
+        {
+            "id": "review_diagram",
+            "title": "Check the generated diagram",
+            "done": bpmn_count > 0,
+            "detail": f"{bpmn_count} version(s) saved",
+            "hint": "Generate the diagram from your notes to start the interview.",
+            "action": "generate",
+        },
+        {
+            "id": "answer_interview",
+            "title": "Answer the open questions",
+            "done": survey_rows > 0 and percent == 100,
+            "detail": f"{filled}/{total} answered ({percent}%)",
+            "hint": "Work the first open question below.",
+            "action": "survey",
+        },
+        {
+            "id": "set_model_key",
+            "title": "Bring your own AI key",
+            "done": any_key,
+            "detail": "Configured on this machine." if any_key else "Not configured.",
+            "hint": "Add your key for Gemini or the university connection.",
+            "action": "byok",
+        },
+        {
+            "id": "standards_check",
+            "title": "Standards and survey line up",
+            "done": bool(standards["ok"]),
+            "detail": f"{standards['requirement_count']} requirements, "
+            f"{sum(1 for c in standards['checks'] if c['ok'])}/{len(standards['checks'])} checks green",
+            "hint": "Re-run at /api/v1/standards/verify-mapping.",
+            "action": "none",
+        },
+    ]
+
+    return {
+        "project": {"id": project["id"], "title": project["title"], "created_at": project["created_at"]},
+        "documents": {"actual": actual_docs, "policy": policy_docs},
+        "survey": {
+            "rows": survey_rows,
+            "filled_slots": filled,
+            "total_slots": total,
+            "completion_percent": percent,
+        },
+        "diagram": {"versions": bpmn_count},
+        "standards": {
+            "ok": standards["ok"],
+            "requirement_count": standards["requirement_count"],
+            "question_count": standards["question_count"],
+        },
+        "llm": {"configured": any_key, "providers": llm_status},
+        "steps": steps,
+    }
 
 # 9. GDPR Data Erasure / 1-Click Cryptographic Wipe
 @app.delete("/api/v1/gdpr/purge/{project_id}")

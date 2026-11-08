@@ -255,12 +255,12 @@ class SurveyService:
                 if val is not None and str(val).strip() != "":
                     row_filled += 1
                 elif next_q is None:
-                    # Found first unanswered slot in Frank's strict order
+                    # First unanswered slot, in fixed order
                     entry_val = r_dict.get("q01_raw_entry") or "this item"
                     crit_val = r_dict.get("q14_raw_criticality") or "critical"
                     q_text = qdef["question"].replace("{entry}", str(entry_val))
                     q_text = q_text.replace("{criticality}", str(crit_val))
-                    
+
                     # Look up dynamic Prelead options from accepted_concepts
                     dynamic_options = list(qdef.get("options") or [])
                     ctype = qdef.get("concept_type")
@@ -270,6 +270,8 @@ class SurveyService:
                                 dynamic_options.append(opt)
 
                     next_q = {
+                        "row_id": r_dict["id"],
+                        "entry": str(entry_val),
                         "question_code": code,
                         "phase": qdef["phase"],
                         "question_text": q_text,

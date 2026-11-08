@@ -208,5 +208,10 @@ const API = {
       })
     });
     return this.handleResponse(res);
+  },
+
+  async getDiagnostics(projectId) {
+    const res = await fetch(`/api/v1/diagnostics/${projectId}`);
+    return this.handleResponse(res);
   }
 };
