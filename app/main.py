@@ -609,9 +609,68 @@ def evaluate_reconstruction(req: CorpusEvaluateRequest):
     metrics = MateiEvaluator.evaluate(ground_truth=gt_graph, predicted=req.predicted_graph)
     return metrics
 
+# 11. Standards catalog & master discovery survey (req_id is the shared key)
+@app.get("/api/v1/standards/requirements")
+def list_standards_requirements(
+    standard_code: Optional[str] = Query(None),
+    phase_category: Optional[str] = Query(None),
+    target_scope: Optional[str] = Query(None),
+):
+    from app.services.standards_service import list_requirements
+
+    requirements = list_requirements(
+        standard_code=standard_code,
+        phase_category=phase_category,
+        target_scope=target_scope,
+    )
+    return {
+        "total": len(requirements),
+        "requirements": requirements,
+    }
+
+@app.get("/api/v1/standards/requirements/{req_id}")
+def get_standards_requirement(req_id: str):
+    from app.services.standards_service import get_requirement
+
+    requirement = get_requirement(req_id)
+    if not requirement:
+        raise HTTPException(status_code=404, detail=f"Requirement '{req_id}' not found")
+    return requirement
+
+@app.get("/api/v1/standards/survey")
+def get_master_survey(phase_category: Optional[str] = Query(None)):
+    from app.services.standards_service import list_survey_questions
+
+    questions = list_survey_questions(phase_category=phase_category)
+    return {
+        "total": len(questions),
+        "questions": questions,
+    }
+
+@app.get("/api/v1/standards/verify-mapping")
+def verify_standards_mapping():
+    from app.services.mapping_verifier import verify_catalog
+
+    return verify_catalog()
+
+@app.get("/api/v1/standards/download/{workbook}")
+def download_standard_workbook(workbook: str):
+    from app.services.standards_service import workbook_download_path
+
+    path = workbook_download_path(workbook)
+    if not path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown or missing workbook '{workbook}'. Use one of: bsi_200_2, bsi_200_4, iso_27001, iso_27002, survey.",
+        )
+    return FileResponse(
+        path,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=os.path.basename(path),
+    )
+
 # Static Assets
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
 @app.get("/")
 def get_index():
     return FileResponse("static/index.html")

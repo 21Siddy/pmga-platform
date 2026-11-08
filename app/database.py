@@ -129,5 +129,112 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_survey_project_order ON process_survey_rows(project_id, row_order);
         CREATE INDEX IF NOT EXISTS idx_concepts_lookup ON accepted_concepts(project_id, concept_type, status);
+
+        -- ------------------------------------------------------------------
+        -- Multi-standard reference catalog and master discovery survey.
+        -- req_id is the single shared key: standards_requirements.req_id is
+        -- the primary key, survey_questions and entity_requirement_assessments
+        -- hold it as a foreign key. Nothing else is joined across layers.
+        -- ------------------------------------------------------------------
+        CREATE TABLE IF NOT EXISTS standards_requirements (
+            req_id TEXT PRIMARY KEY,
+            standard_code TEXT NOT NULL,
+            clause_ref TEXT NOT NULL,
+            title TEXT NOT NULL,
+            target_scope TEXT NOT NULL,
+            phase_category TEXT NOT NULL,
+            formal_requirement TEXT NOT NULL,
+            plain_english_requirement TEXT NOT NULL,
+            question_text TEXT NOT NULL,
+            validation_rule TEXT NOT NULL,
+            evidence_needed TEXT,
+            common_gaps TEXT,
+            compensating_controls_template TEXT,
+            concept_type TEXT,
+            allowed_options_json TEXT NOT NULL DEFAULT '[]',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS survey_questions (
+            question_id TEXT PRIMARY KEY,
+            req_id TEXT NOT NULL UNIQUE,
+            sequence_order INTEGER NOT NULL,
+            phase_category TEXT NOT NULL,
+            target_scope TEXT NOT NULL,
+            question_text TEXT NOT NULL,
+            allowed_options_json TEXT NOT NULL DEFAULT '[]',
+            validation_rule TEXT NOT NULL,
+            concept_type TEXT,
+            standard_code TEXT NOT NULL,
+            clause_ref TEXT NOT NULL,
+            plain_english_requirement TEXT NOT NULL,
+            FOREIGN KEY (req_id) REFERENCES standards_requirements(req_id) ON DELETE CASCADE
+        );
+
+        -- Discovered organisational entities: processes, sub-processes,
+        -- activities, systems, data assets and roles, in a parent hierarchy.
+        CREATE TABLE IF NOT EXISTS org_entities (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            parent_id TEXT,
+            owner_role TEXT,
+            source_survey_row_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (parent_id) REFERENCES org_entities(id) ON DELETE CASCADE
+        );
+
+        -- Directed links used for inheritance: a system SUPPORTS a process,
+        -- a process USES_DATA a data asset, and so on.
+        CREATE TABLE IF NOT EXISTS entity_dependencies (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            from_entity_id TEXT NOT NULL,
+            to_entity_id TEXT NOT NULL,
+            dependency_type TEXT NOT NULL,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (from_entity_id) REFERENCES org_entities(id) ON DELETE CASCADE,
+            FOREIGN KEY (to_entity_id) REFERENCES org_entities(id) ON DELETE CASCADE,
+            UNIQUE (from_entity_id, to_entity_id, dependency_type)
+        );
+
+        -- One answer per (entity, requirement). status is produced by the
+        -- deterministic rule engine, never guessed by the UI.
+        CREATE TABLE IF NOT EXISTS entity_requirement_assessments (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            req_id TEXT NOT NULL,
+            answer_value TEXT,
+            answer_numeric REAL,
+            justification TEXT,
+            status TEXT NOT NULL DEFAULT 'NEEDS_USER_INPUT',
+            inherited_from_entities_json TEXT,
+            evidence_json TEXT,
+            answered_by TEXT,
+            answered_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (entity_id) REFERENCES org_entities(id) ON DELETE CASCADE,
+            FOREIGN KEY (req_id) REFERENCES standards_requirements(req_id) ON DELETE CASCADE,
+            UNIQUE (entity_id, req_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_requirements_standard ON standards_requirements(standard_code, req_id);
+        CREATE INDEX IF NOT EXISTS idx_requirements_phase ON standards_requirements(phase_category, req_id);
+        CREATE INDEX IF NOT EXISTS idx_questions_sequence ON survey_questions(sequence_order);
+        CREATE INDEX IF NOT EXISTS idx_entities_project_type ON org_entities(project_id, entity_type, name);
+        CREATE INDEX IF NOT EXISTS idx_entities_parent ON org_entities(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_dependencies_project_from ON entity_dependencies(project_id, from_entity_id, dependency_type);
+        CREATE INDEX IF NOT EXISTS idx_dependencies_project_to ON entity_dependencies(project_id, to_entity_id, dependency_type);
+        CREATE INDEX IF NOT EXISTS idx_assessments_project_status ON entity_requirement_assessments(project_id, status);
+        CREATE INDEX IF NOT EXISTS idx_assessments_entity ON entity_requirement_assessments(entity_id, req_id);
         """)
 
