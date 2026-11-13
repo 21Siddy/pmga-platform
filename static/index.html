@@ -284,6 +284,36 @@
         </div>
       </div>
 
+      <!-- Process, Systems & Data Structure (BSI Inheritance & Proven Citations) -->
+      <details id="structure-drawer" class="disclosure-drawer" style="margin-top: 1.25rem;">
+        <summary class="disclosure-summary">
+          <span>Process, Systems &amp; Data Structure (BSI Inheritance &amp; Proven Evidence)</span>
+          <span class="disclosure-hint" id="structure-summary-hint">0 entities, 0 links</span>
+        </summary>
+        <div class="disclosure-body">
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center;">
+            <select id="select-entity-type" class="civic-select">
+              <option value="PROCESS">Process</option>
+              <option value="SUB_PROCESS">Sub-Process</option>
+              <option value="ACTIVITY">Activity</option>
+              <option value="SYSTEM">System / App</option>
+              <option value="DATA_ASSET">Data Asset</option>
+              <option value="ROLE">Role / Owner</option>
+            </select>
+            <input type="text" id="input-entity-name" class="civic-input" placeholder="Name (e.g. Gutscheinsystem)">
+            <input type="text" id="input-entity-owner" class="civic-input" placeholder="Owner role (optional)">
+            <select id="select-entity-parent" class="civic-select">
+              <option value="">No Parent (Top-Level)</option>
+            </select>
+            <button id="btn-add-entity" class="pill-btn secondary" type="button">+ Add Entity</button>
+          </div>
+          <div id="entity-tree-container" class="benchmarks-compact-list">
+            <span class="empty-state">Upload documents or answer survey questions to build the entity hierarchy.</span>
+          </div>
+          <div id="plotholes-container" style="margin-top: 12px;"></div>
+        </div>
+      </details>
+
     </section>
 
     <!-- TAB 2: Full Interactive BPMN 2.0 Studio -->
@@ -390,6 +420,7 @@
           <h3>Identified Operational Gaps &amp; Compensating Controls</h3>
           <div class="gap-action-buttons">
             <button id="btn-export-excel-report" class="pill-btn secondary">Download Annotated Excel (.xlsx)</button>
+            <button id="btn-export-oscal-report" class="pill-btn secondary">Download OSCAL (.json)</button>
             <button id="btn-gdpr-purge" class="pill-btn danger">GDPR 1-Click Project Purge</button>
           </div>
         </div>
@@ -445,41 +476,58 @@
   <div id="modal-byok" class="civic-modal-backdrop" role="dialog" aria-modal="true">
     <div class="civic-modal">
       <div class="modal-header">
-        <h3>LLM Provider &amp; Model Routing</h3>
+        <h3>Bring Your Own AI Key</h3>
         <button class="modal-close" id="btn-close-byok">&times;</button>
       </div>
       <div class="modal-body">
-        <p>Supports <strong>Google Gemini</strong> and <strong>University KI-Connect</strong> (OpenAI-compatible). Requests are paced through an automatic rate-limit queue.</p>
-        
+        <p>Choose your provider and model per run. Keys stay in browser memory for this session only and are never saved to disk.</p>
+
         <div class="form-group">
-          <label for="select-llm-provider">Active Provider</label>
+          <label for="select-llm-provider">Provider</label>
           <select id="select-llm-provider" class="civic-select full-width">
-            <option value="gemini">Google Gemini (gemini-3.8-flash)</option>
-            <option value="kiconnect">University KI-Connect (OpenAI Compatible)</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="mistral">Mistral</option>
+            <option value="azure">Azure OpenAI</option>
+            <option value="kiconnect">University gateway (OpenAI-compatible)</option>
           </select>
         </div>
 
+        <div class="form-group">
+          <label for="input-llm-model">Model / Deployment Name</label>
+          <input type="text" id="input-llm-model" class="civic-input full-width" placeholder="e.g. gpt-4.1-mini or gemini-3.8-flash">
+        </div>
+
+        <div id="llm-base-url-group" class="form-group hidden">
+          <label for="input-llm-base-url">Endpoint Base URL</label>
+          <input type="url" id="input-llm-base-url" class="civic-input full-width" placeholder="https://your-resource.openai.azure.com/openai/deployments/...">
+        </div>
+
         <div id="gemini-key-group" class="form-group">
-          <label for="input-gemini-key">Gemini API Key</label>
-          <input type="password" id="input-gemini-key" class="civic-input full-width" placeholder="AIzaSy...">
+          <label for="input-gemini-key">API Key (per-run only, never stored on disk)</label>
+          <input type="password" id="input-gemini-key" class="civic-input full-width" autocomplete="off" placeholder="Paste your provider API key...">
         </div>
 
         <div id="kiconnect-info-group" class="form-group hidden">
           <div class="kiconnect-banner">
-            <strong>University KI-Connect (.env)</strong>
-            <p id="kiconnect-status-text">Endpoint: Loaded from .env (API_BASE &amp; API_KEY)</p>
+            <strong>Server / Gateway Configuration</strong>
+            <p id="kiconnect-status-text">Optional: leave key blank only if configured on server.</p>
           </div>
         </div>
+
+        <div id="llm-test-result" class="corpus-model-info hidden" style="margin-top: 10px;"></div>
 
         <div class="checkbox-row" style="margin-top: 12px;">
           <label>
             <input type="checkbox" id="chk-save-local" checked>
-            <span>Remember session configuration</span>
+            <span>Keep key in this browser tab until closed</span>
           </label>
         </div>
       </div>
-      <div class="modal-footer">
-        <button id="btn-save-byok" class="pill-btn primary">Save &amp; Activate</button>
+      <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button id="btn-test-llm" class="pill-btn secondary" type="button">Test Connection</button>
+        <button id="btn-save-byok" class="pill-btn primary" type="button">Use for This Run</button>
       </div>
     </div>
   </div>

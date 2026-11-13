@@ -3,7 +3,7 @@ import json
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 from app.config import settings
-from app.services.llm_client import LLMClient
+from app.services.llm_client import LLMClient, ProviderError
 from app.services.bpmn_verifier import BPMNVerifier, VerificationTelemetry
 
 class BPMNNode(BaseModel):
@@ -34,27 +34,28 @@ class BPMNEngine:
         policy_context: Optional[str] = None,
         api_key: Optional[str] = None,
         provider: Optional[str] = None,
-        model_name: Optional[str] = None
+        model_name: Optional[str] = None,
+        base_url: Optional[str] = None,
     ) -> BPMNProcessGraph:
         """
         Executes the Scientific 3-Stage Generation, Verification & Recursive Refinement Loop.
         Accepts messy free-text, shorthand notes, and broken grammar.
         """
-        # Determine if any LLM credentials are configured
-        has_gemini = bool(api_key or settings.GEMINI_API_KEY)
-        has_kiconnect = bool(settings.API_KEY and settings.API_BASE)
+        # Use the model when the caller supplied a usable configuration.
+        # No configuration means the deterministic generator, never an error.
+        try:
+            LLMClient.resolve(provider, api_key, model_name, base_url)
+        except ProviderError:
+            return BPMNEngine._generate_fallback_graph(process_text)
 
-        if has_gemini or has_kiconnect:
-            return BPMNEngine._generate_with_recursive_refinement(
-                process_text=process_text,
-                policy_context=policy_context,
-                api_key=api_key,
-                provider=provider,
-                model_name=model_name
-            )
-
-        # Fallback deterministic generator (robust to messy free text)
-        return BPMNEngine._generate_fallback_graph(process_text)
+        return BPMNEngine._generate_with_recursive_refinement(
+            process_text=process_text,
+            policy_context=policy_context,
+            api_key=api_key,
+            provider=provider,
+            model_name=model_name,
+            base_url=base_url,
+        )
 
     @staticmethod
     def _generate_with_recursive_refinement(
@@ -62,16 +63,25 @@ class BPMNEngine:
         policy_context: Optional[str],
         api_key: Optional[str],
         provider: Optional[str],
-        model_name: Optional[str]
+        model_name: Optional[str],
+        base_url: Optional[str] = None,
     ) -> BPMNProcessGraph:
         """
         Recursive Critique-Refine Loop with BYOK Playbook Injection:
         Detects style -> Injects archetype rule and verified few-shot -> Generates draft -> Verifies mathematically.
         """
         from app.services.perturbation_engine import PerturbationEngine
+        from app.services.document_service import DocumentService
+
+        # Privacy-by-default: redact citizen/internal PII before sending to any external LLM
+        safe_process_text = DocumentService.scan_for_pii(process_text or "")["redacted_text"]
+        safe_policy_context = (
+            DocumentService.scan_for_pii(policy_context)["redacted_text"]
+            if policy_context else None
+        )
 
         # Detect linguistic archetype and load BYOK Playbook guidelines
-        style_meta = PerturbationEngine.detect_input_style(process_text)
+        style_meta = PerturbationEngine.detect_input_style(safe_process_text)
         detected_style = style_meta.get("detected_style", "formal")
         rule = style_meta.get("playbook_rule")
         few_shot = style_meta.get("playbook_few_shot")
@@ -95,8 +105,8 @@ class BPMNEngine:
                 f"\n--- VERIFIED FEW-SHOT REFERENCE:\nINPUT NOTES: {few_shot['input_text']}\nEXPECTED JSON GRAPH: {json.dumps(few_shot['graph'])}"
             )
 
-        prompt_parts.append(f"\n--- LIVED STAFF NOTES / OPERATIONAL PROCESS:\n{process_text}")
-        prompt_parts.append(f"\n--- FORMAL POLICY RULES (Context):\n{policy_context or 'None'}")
+        prompt_parts.append(f"\n--- LIVED STAFF NOTES / OPERATIONAL PROCESS:\n{safe_process_text}")
+        prompt_parts.append(f"\n--- FORMAL POLICY RULES (Context):\n{safe_policy_context or 'None'}")
 
         prompt = "\n".join(prompt_parts)
 
@@ -107,14 +117,15 @@ class BPMNEngine:
             system_instruction=system_instruction,
             api_key=api_key,
             provider=provider,
-            model_name=model_name
+            model_name=model_name,
+            base_url=base_url,
         )
 
         # Verification Stage
         telemetry = BPMNVerifier.verify_graph(
             graph_nodes=[n.model_dump() for n in graph.nodes],
             graph_edges=[e.model_dump() for e in graph.edges],
-            source_text=process_text
+            source_text=safe_process_text
         )
 
         # Refinement loop (up to 1 refinement pass if defects found)
@@ -125,7 +136,7 @@ CRITIQUE: {telemetry.critique_prompt}
 Please revise the graph to fix these defects completely while preserving the original process.
 
 Original Notes:
-{process_text}
+{safe_process_text}
 """
             try:
                 refined_graph = LLMClient.generate_structured(
@@ -134,12 +145,13 @@ Original Notes:
                     system_instruction=system_instruction,
                     api_key=api_key,
                     provider=provider,
-                    model_name=model_name
+                    model_name=model_name,
+                    base_url=base_url,
                 )
                 refined_telemetry = BPMNVerifier.verify_graph(
                     graph_nodes=[n.model_dump() for n in refined_graph.nodes],
                     graph_edges=[e.model_dump() for e in refined_graph.edges],
-                    source_text=process_text
+                    source_text=safe_process_text
                 )
                 refined_graph.telemetry = refined_telemetry
                 return refined_graph
@@ -230,7 +242,7 @@ Original Notes:
             # Trailing tasks if any
             for idx, (l_assigned, a_name) in enumerate(parsed_items[3:5], start=3):
                 node_id = f"Task_{idx}"
-                assigned = l_assigned or (lanes[1] if idx <= 4 else lanes[min(2, len(lanes)-1)])
+                assigned = l_assigned or (lanes[min(1, len(lanes)-1)] if idx <= 4 else lanes[min(2, len(lanes)-1)])
                 nodes.append(BPMNNode(id=node_id, name=a_name[:55], type="userTask", lane=assigned))
                 edges.append(BPMNEdge(id=f"Flow_{idx}", sourceRef=prev_id, targetRef=node_id))
                 prev_id = node_id
@@ -241,7 +253,7 @@ Original Notes:
                 if l_assigned:
                     assigned_lane = l_assigned
                 else:
-                    assigned_lane = lanes[1] if idx <= 4 else lanes[min(2, len(lanes)-1)]
+                    assigned_lane = lanes[min(1, len(lanes)-1)] if idx <= 4 else lanes[min(2, len(lanes)-1)]
                 nodes.append(
                     BPMNNode(
                         id=node_id,
@@ -276,8 +288,9 @@ Original Notes:
     @staticmethod
     def compile_graph_to_bpmn_xml(graph: BPMNProcessGraph) -> str:
         """
-        Compiles process graph into 100% valid BPMN 2.0 XML with deterministic <bpmndi:BPMNDiagram> coordinates.
-        Supports custom node dimensions and swimlanes.
+        Compiles process graph into valid BPMN 2.0 XML with 2D layered <bpmndi:BPMNDiagram>
+        coordinates (parallel branches stack vertically; back-edges route cleanly) and
+        <bpmn:extensionElements> metadata.
         """
         lane_map = {lane: [] for lane in graph.lanes}
         for node in graph.nodes:
@@ -287,27 +300,83 @@ Original Notes:
 
         active_lanes = [l for l in graph.lanes if l in lane_map] or ["General Department"]
 
-        lane_height = 180
-        total_lanes = len(active_lanes)
-        node_spacing_x = 180
-        canvas_width = max(800, 260 + len(graph.nodes) * node_spacing_x)
-        canvas_height = 80 + total_lanes * lane_height + 40
+        # 1. Assign topological layers (X-columns) via BFS from startEvent(s), safe against cycles
+        adj: Dict[str, List[str]] = {n.id: [] for n in graph.nodes}
+        for edge in graph.edges:
+            if edge.sourceRef in adj:
+                adj[edge.sourceRef].append(edge.targetRef)
 
-        lane_y_coords = {lane: 80 + idx * lane_height for idx, lane in enumerate(active_lanes)}
+        layer_of: Dict[str, int] = {}
+        queue = [n.id for n in graph.nodes if n.type == "startEvent"]
+        if not queue and graph.nodes:
+            queue = [graph.nodes[0].id]
+        for nid in queue:
+            layer_of[nid] = 0
 
-        node_coords = {}
-        curr_x = 220
+        visited_bfs = set(queue)
+        head = 0
+        while head < len(queue):
+            curr = queue[head]
+            head += 1
+            curr_layer = layer_of[curr]
+            for nxt in adj.get(curr, []):
+                if nxt not in visited_bfs:
+                    visited_bfs.add(nxt)
+                    layer_of[nxt] = curr_layer + 1
+                    queue.append(nxt)
+
+        # Assign fallback layers for any disconnected nodes
+        next_fallback = (max(layer_of.values()) + 1) if layer_of else 0
+        for node in graph.nodes:
+            if node.id not in layer_of:
+                layer_of[node.id] = next_fallback
+                next_fallback += 1
+
+        # Count vertical stack slots per (lane, layer) so parallel nodes stack without overlap
+        slot_counts: Dict[tuple, int] = {}
+        node_slot: Dict[str, int] = {}
+        lane_max_stack: Dict[str, int] = {l: 1 for l in active_lanes}
+        for node in graph.nodes:
+            key = (node.lane, layer_of[node.id])
+            slot_idx = slot_counts.get(key, 0)
+            slot_counts[key] = slot_idx + 1
+            node_slot[node.id] = slot_idx
+            lane_max_stack[node.lane] = max(lane_max_stack.get(node.lane, 1), slot_idx + 1)
+
+        base_row_height = 140
+        lane_heights: Dict[str, int] = {
+            l: max(180, lane_max_stack.get(l, 1) * base_row_height + 20)
+            for l in active_lanes
+        }
+        lane_y_coords: Dict[str, int] = {}
+        running_y = 80
+        for l in active_lanes:
+            lane_y_coords[l] = running_y
+            running_y += lane_heights[l]
+
+        max_layer = max(layer_of.values()) if layer_of else 0
+        node_spacing_x = 190
+        canvas_width = max(860, 280 + (max_layer + 1) * node_spacing_x)
+        canvas_height = running_y + 40
+
+        node_coords: Dict[str, Dict[str, int]] = {}
         for node in graph.nodes:
             lane_top = lane_y_coords.get(node.lane, 80)
+            lh = lane_heights.get(node.lane, 180)
+            stack_count = slot_counts.get((node.lane, layer_of[node.id]), 1)
+            slot_idx = node_slot[node.id]
+
             if node.type in ["startEvent", "endEvent"]:
                 w, h = 36, 36
             elif "gateway" in node.type.lower():
                 w, h = 50, 50
             else:
                 w, h = 130, 80
-            y = lane_top + (lane_height - h) // 2
-            node_coords[node.id] = {"x": curr_x, "y": y, "w": w, "h": h}
-            curr_x += node_spacing_x
+
+            x = 220 + layer_of[node.id] * node_spacing_x + (130 - w) // 2
+            band_h = lh // stack_count
+            y = lane_top + slot_idx * band_h + (band_h - h) // 2
+            node_coords[node.id] = {"x": x, "y": y, "w": w, "h": h}
 
         xml_parts = [
             '<?xml version="1.0" encoding="UTF-8"?>',
@@ -315,6 +384,7 @@ Original Notes:
             '                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"',
             '                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"',
             '                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"',
+            '                  xmlns:pmga="http://pmga.local/schema/1.0"',
             '                  id="Definitions_PMGA"',
             '                  targetNamespace="http://pmga.local/bpmn">',
             '  <bpmn:collaboration id="Collaboration_PMGA">',
@@ -337,11 +407,18 @@ Original Notes:
             tag = f"bpmn:{node.type}"
             in_flows = [e.id for e in graph.edges if e.targetRef == node.id]
             out_flows = [e.id for e in graph.edges if e.sourceRef == node.id]
+            has_ext = bool(node.risk_annotation or (node.source_type and node.source_type != "ACTUAL_OPERATION"))
 
-            if not in_flows and not out_flows:
+            if not in_flows and not out_flows and not has_ext:
                 xml_parts.append(f'    <{tag} id="{node.id}" name="{_esc(node.name)}" />')
             else:
                 xml_parts.append(f'    <{tag} id="{node.id}" name="{_esc(node.name)}">')
+                if has_ext:
+                    xml_parts.append('      <bpmn:extensionElements>')
+                    xml_parts.append(
+                        f'        <pmga:governance sourceType="{_esc(node.source_type)}" riskAnnotation="{_esc(node.risk_annotation or "")}" />'
+                    )
+                    xml_parts.append('      </bpmn:extensionElements>')
                 for f_in in in_flows:
                     xml_parts.append(f'      <bpmn:incoming>{f_in}</bpmn:incoming>')
                 for f_out in out_flows:
@@ -357,15 +434,16 @@ Original Notes:
         xml_parts.append('  </bpmn:process>')
         xml_parts.append('  <bpmndi:BPMNDiagram id="BPMNDiagram_PMGA">')
         xml_parts.append('    <bpmndi:BPMNPlane id="BPMNPlane_PMGA" bpmnElement="Collaboration_PMGA">')
-        xml_parts.append(f'      <bpmndi:BPMNShape id="Participant_PMGA_di" bpmnElement="Participant_PMGA" isHorizontal="true">')
+        xml_parts.append('      <bpmndi:BPMNShape id="Participant_PMGA_di" bpmnElement="Participant_PMGA" isHorizontal="true">')
         xml_parts.append(f'        <dc:Bounds x="160" y="80" width="{canvas_width}" height="{canvas_height - 80}" />')
         xml_parts.append('      </bpmndi:BPMNShape>')
 
         for idx, lane in enumerate(active_lanes):
             lane_id = f"Lane_{idx+1}"
             ly = lane_y_coords[lane]
+            lh = lane_heights[lane]
             xml_parts.append(f'      <bpmndi:BPMNShape id="{lane_id}_di" bpmnElement="{lane_id}" isHorizontal="true">')
-            xml_parts.append(f'        <dc:Bounds x="190" y="{ly}" width="{canvas_width - 30}" height="{lane_height}" />')
+            xml_parts.append(f'        <dc:Bounds x="190" y="{ly}" width="{canvas_width - 30}" height="{lh}" />')
             xml_parts.append('      </bpmndi:BPMNShape>')
 
         for node in graph.nodes:
@@ -378,11 +456,25 @@ Original Notes:
             s_c = node_coords.get(edge.sourceRef)
             t_c = node_coords.get(edge.targetRef)
             if s_c and t_c:
-                s_x, s_y = s_c["x"] + s_c["w"], s_c["y"] + s_c["h"] // 2
-                t_x, t_y = t_c["x"], t_c["y"] + t_c["h"] // 2
                 xml_parts.append(f'      <bpmndi:BPMNEdge id="{edge.id}_di" bpmnElement="{edge.id}">')
-                xml_parts.append(f'        <di:waypoint x="{s_x}" y="{s_y}" />')
-                xml_parts.append(f'        <di:waypoint x="{t_x}" y="{t_y}" />')
+                if t_c["x"] < s_c["x"]:
+                    # Loop-back edge: route cleanly below source and target boxes
+                    s_x, s_y = s_c["x"] + s_c["w"] // 2, s_c["y"] + s_c["h"]
+                    t_x, t_y = t_c["x"] + t_c["w"] // 2, t_c["y"] + t_c["h"]
+                    detour_y = max(s_y, t_y) + 32
+                    xml_parts.append(f'        <di:waypoint x="{s_x}" y="{s_y}" />')
+                    xml_parts.append(f'        <di:waypoint x="{s_x}" y="{detour_y}" />')
+                    xml_parts.append(f'        <di:waypoint x="{t_x}" y="{detour_y}" />')
+                    xml_parts.append(f'        <di:waypoint x="{t_x}" y="{t_y}" />')
+                else:
+                    s_x, s_y = s_c["x"] + s_c["w"], s_c["y"] + s_c["h"] // 2
+                    t_x, t_y = t_c["x"], t_c["y"] + t_c["h"] // 2
+                    xml_parts.append(f'        <di:waypoint x="{s_x}" y="{s_y}" />')
+                    if s_y != t_y:
+                        mid_x = (s_x + t_x) // 2
+                        xml_parts.append(f'        <di:waypoint x="{mid_x}" y="{s_y}" />')
+                        xml_parts.append(f'        <di:waypoint x="{mid_x}" y="{t_y}" />')
+                    xml_parts.append(f'        <di:waypoint x="{t_x}" y="{t_y}" />')
                 xml_parts.append('      </bpmndi:BPMNEdge>')
 
         xml_parts.append('    </bpmndi:BPMNPlane>')

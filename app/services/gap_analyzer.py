@@ -4,7 +4,7 @@ import logging
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 from app.config import settings
-from app.services.llm_client import LLMClient
+from app.services.llm_client import LLMClient, ProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +35,23 @@ class GapAnalyzer:
         selected_controls: List[Dict[str, Any]],
         api_key: Optional[str] = None,
         provider: Optional[str] = None,
-        model_name: Optional[str] = None
+        model_name: Optional[str] = None,
+        base_url: Optional[str] = None,
     ) -> GapAnalysisResult:
         """
         Cross-analyzes process documentation + BPMN model against ISO 27002 controls.
         Uses rate-limited LLM routing or deterministic fallback.
         """
-        has_gemini = bool(api_key or settings.GEMINI_API_KEY)
-        has_kiconnect = bool(settings.API_KEY and settings.API_BASE)
+        try:
+            LLMClient.resolve(provider, api_key, model_name, base_url)
+            has_usable_llm = True
+        except ProviderError:
+            has_usable_llm = False
 
-        if has_gemini or has_kiconnect:
+        if has_usable_llm:
             controls_summary = "\n".join([
                 f"- [{c['control_id']}] {c['title']} ({c['chapter']}): Req: {c['requirement']} | Gaps: {c.get('common_gaps', '')}"
-                for c in selected_controls[:25]
+                for c in selected_controls
             ])
 
             system_instruction = (
@@ -64,7 +68,7 @@ class GapAnalyzer:
 --- FORMAL POLICY RULES:
 {policy_text}
 
---- RELEVANT ISO 27002:2022 CONTROLS:
+--- RELEVANT ISO 27002:2022 CONTROLS ({len(selected_controls)} total):
 {controls_summary}
 """
             try:
@@ -74,7 +78,8 @@ class GapAnalyzer:
                     system_instruction=system_instruction,
                     api_key=api_key,
                     provider=provider,
-                    model_name=model_name
+                    model_name=model_name,
+                    base_url=base_url,
                 )
             except Exception as e:
                 logger.error(f"LLM Gap analysis failed: {e}. Falling back to deterministic rules.")

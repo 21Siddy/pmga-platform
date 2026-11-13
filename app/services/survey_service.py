@@ -165,11 +165,14 @@ class SurveyService:
     def ingest_rows_into_survey(project_id: str, items: List[Dict[str, Any]]) -> List[str]:
         """
         Ingests rows from an uploaded Excel or parsed dump into process_survey_rows.
-        Stores raw strings verbatim.
+        Idempotent on (project_id, sheet_name, lower(q01_raw_entry)) so re-uploading
+        the same file never creates duplicate rows, and syncs each row into org_entities.
         """
-        inserted_ids = []
+        from app.services.entity_service import EntityService
+
+        touched_ids = []
+        synced_rows: List[Dict[str, Any]] = []
         with get_db() as conn:
-            # Get current max row_order for project
             max_order_row = conn.execute(
                 "SELECT COALESCE(MAX(row_order), 0) as max_o FROM process_survey_rows WHERE project_id = ?",
                 (project_id,)
@@ -181,22 +184,47 @@ class SurveyService:
                 if not raw_entry:
                     continue
 
-                row_id = str(uuid.uuid4())
-                current_order += 1
                 sheet_name = str(it.get("sheet_name") or "General").strip()
-
-                # Detect entry kind
                 entry_kind = it.get("entry_kind") or SurveyService.classify_entry_kind(raw_entry)
                 raw_crit = str(it.get("raw_criticality") or it.get("criticality") or "").strip()
 
+                existing = conn.execute(
+                    """SELECT * FROM process_survey_rows
+                       WHERE project_id = ? AND lower(sheet_name) = lower(?) AND lower(q01_raw_entry) = lower(?)""",
+                    (project_id, sheet_name, raw_entry),
+                ).fetchone()
+
+                if existing:
+                    row_id = existing["id"]
+                    if raw_crit and not existing["q14_raw_criticality"]:
+                        conn.execute(
+                            "UPDATE process_survey_rows SET q14_raw_criticality = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                            (raw_crit, row_id),
+                        )
+                    updated_existing = conn.execute(
+                        "SELECT * FROM process_survey_rows WHERE id = ?", (row_id,)
+                    ).fetchone()
+                    synced_rows.append(dict(updated_existing))
+                    touched_ids.append(row_id)
+                    continue
+
+                row_id = str(uuid.uuid4())
+                current_order += 1
+
                 conn.execute(
                     """INSERT INTO process_survey_rows 
-                       (id, project_id, sheet_name, row_order, q01_raw_entry, q02_entry_kind, q14_raw_criticality)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (row_id, project_id, sheet_name, current_order, raw_entry, entry_kind, raw_crit or None)
+                       (id, project_id, sheet_name, row_order, q01_raw_entry, q02_entry_kind, q14_raw_criticality,
+                        q03_process_name, q04_owner_role, q05_trigger_event, q06_in_handbook,
+                        q07_lived_reality_notes, q08_input_data_mandatory, q10_output_data, q11_storage_location)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        row_id, project_id, sheet_name, current_order, raw_entry, entry_kind, raw_crit or None,
+                        it.get("process_name"), it.get("owner_role"), it.get("trigger_event"),
+                        it.get("in_handbook"), it.get("lived_reality_notes"),
+                        it.get("input_data"), it.get("output_data"), it.get("storage_location"),
+                    ),
                 )
 
-                # Pre-register application in accepted_concepts if applicable
                 if entry_kind == "APPLICATION":
                     conn.execute(
                         """INSERT OR IGNORE INTO accepted_concepts 
@@ -205,9 +233,19 @@ class SurveyService:
                         (str(uuid.uuid4()), project_id, raw_entry, raw_entry)
                     )
 
-                inserted_ids.append(row_id)
+                inserted_row = conn.execute(
+                    "SELECT * FROM process_survey_rows WHERE id = ?", (row_id,)
+                ).fetchone()
+                synced_rows.append(dict(inserted_row))
+                touched_ids.append(row_id)
 
-        return inserted_ids
+        for r_dict in synced_rows:
+            try:
+                EntityService.sync_survey_row_to_entities(project_id, r_dict)
+            except Exception as exc:
+                logger.warning(f"Entity sync warning for row {r_dict.get('id')}: {exc}")
+
+        return touched_ids
 
     @staticmethod
     def get_survey_state(project_id: str) -> Dict[str, Any]:
@@ -357,20 +395,38 @@ class SurveyService:
                             (str(uuid.uuid4()), project_id, ctype, p, p)
                         )
 
+            refreshed_row = conn.execute(
+                "SELECT * FROM process_survey_rows WHERE id = ?", (row_id,)
+            ).fetchone()
+
+        if refreshed_row:
+            from app.services.entity_service import EntityService
+            try:
+                EntityService.sync_survey_row_to_entities(project_id, dict(refreshed_row))
+            except Exception as exc:
+                logger.warning(f"Entity sync on answer warning: {exc}")
+
         # Return refreshed survey state
         return SurveyService.get_survey_state(project_id)
 
     @staticmethod
-    def compile_survey_to_bpmn_graph(project_id: str) -> BPMNProcessGraph:
+    def compile_survey_to_bpmn_graph(project_id: str, process_name: Optional[str] = None) -> BPMNProcessGraph:
         """
-        Non-blockingly compiles all survey rows into a valid, connected BPMN 2.0 graph.
-        Handles missing slots gracefully and generates loop-back flows for repeatable steps.
+        Non-blockingly compiles survey rows (optionally scoped to one business process)
+        into a valid, connected BPMN 2.0 graph with exception/loop gateways.
         """
         with get_db() as conn:
             rows = conn.execute(
                 "SELECT * FROM process_survey_rows WHERE project_id = ? ORDER BY row_order ASC",
                 (project_id,)
             ).fetchall()
+
+        if process_name:
+            target_low = process_name.strip().lower()
+            rows = [
+                r for r in rows
+                if (r["q03_process_name"] or r["sheet_name"] or r["q01_raw_entry"]).strip().lower() == target_low
+            ]
 
         if not rows:
             return BPMNProcessGraph(
@@ -473,7 +529,7 @@ class SurveyService:
             source_text=" ".join([r["q01_raw_entry"] for r in rows])
         )
 
-        title = f"Process Architecture ({len(rows)} Elements)"
+        title = process_name or f"Process Architecture ({len(rows)} Elements)"
         return BPMNProcessGraph(
             process_title=title,
             lanes=lanes,
@@ -481,3 +537,22 @@ class SurveyService:
             edges=edges,
             telemetry=telemetry
         )
+
+    @staticmethod
+    def compile_process_graphs(project_id: str) -> List[BPMNProcessGraph]:
+        """Compile one BPMN diagram per distinct business process (never merging unrelated departments)."""
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT * FROM process_survey_rows WHERE project_id = ? ORDER BY row_order ASC",
+                (project_id,)
+            ).fetchall()
+
+        groups: List[str] = []
+        for r in rows:
+            key = (r["q03_process_name"] or r["sheet_name"] or r["q01_raw_entry"]).strip()
+            if key and key not in groups:
+                groups.append(key)
+
+        if len(groups) <= 1:
+            return [SurveyService.compile_survey_to_bpmn_graph(project_id)]
+        return [SurveyService.compile_survey_to_bpmn_graph(project_id, process_name=g) for g in groups]

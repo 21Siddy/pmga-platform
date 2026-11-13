@@ -87,6 +87,31 @@ def health_check():
 def get_llm_status():
     return LLMClient.get_provider_status()
 
+@app.get("/api/v1/llm/providers")
+def list_llm_providers():
+    """The providers the UI may offer, without any secrets."""
+    return {"providers": LLMClient.list_providers()}
+
+class LLMTestRequest(BaseModel):
+    provider: str
+    model_name: Optional[str] = None
+    base_url: Optional[str] = None
+
+@app.post("/api/v1/llm/test")
+def test_llm_connection(
+    req: LLMTestRequest,
+    x_llm_api_key: Optional[str] = Header(None),
+    x_gemini_api_key: Optional[str] = Header(None),
+):
+    """One real, cheap call. Reports success or a plain failure reason."""
+    key = x_llm_api_key or x_gemini_api_key
+    return LLMClient.test_connection(
+        provider=req.provider,
+        api_key=key,
+        model_name=req.model_name,
+        base_url=req.base_url,
+    )
+
 # 1. Projects API
 class ProjectCreateRequest(BaseModel):
     title: str
@@ -224,36 +249,22 @@ async def upload_document(
             (doc_id, project_id, file.filename, save_path, doc_type, extracted, pii_report["redacted_text"], json.dumps(pii_report["detections"]))
         )
 
-    # Automatic non-blocking survey row extraction
+    # Automatic non-blocking survey row & evidence extraction
+    from app.services.intake_extractor import map_excel_sheets_to_survey_items, extract_handbook_evidence
+
     survey_count = 0
+    evidence_summary = {"entities_touched": 0, "assessments_proven": 0, "citations": []}
     ext = os.path.splitext(safe_filename)[1].lower()
     if ext in ['.xlsx', '.xlsm', '.xltx']:
         try:
             sheets = DocumentService.extract_excel_sheets(save_path)
-            items = []
-            for s in sheets:
-                sname = s["sheet_name"]
-                for r in s["rows"]:
-                    raw_list = r["raw_list"]
-                    if not raw_list:
-                        continue
-                    first_col = raw_list[0]
-                    # check for criticality in remaining cols
-                    crit = ""
-                    for cell_val in raw_list[1:]:
-                        if any(c in cell_val.lower() for c in ["kritisch", "critical", "hoch", "high"]):
-                            crit = cell_val
-                            break
-                    items.append({
-                        "sheet_name": sname,
-                        "raw_entry": first_col,
-                        "raw_criticality": crit
-                    })
+            items = map_excel_sheets_to_survey_items(sheets)
             if items:
                 inserted_ids = SurveyService.ingest_rows_into_survey(project_id, items)
                 survey_count = len(inserted_ids)
-                # Non-blockingly compile initial BPMN diagram
-                graph = SurveyService.compile_survey_to_bpmn_graph(project_id)
+                # Non-blockingly compile initial BPMN diagram(s)
+                graphs = SurveyService.compile_process_graphs(project_id)
+                graph = graphs[0]
                 bpmn_xml = BPMNEngine.compile_graph_to_bpmn_xml(graph)
                 with get_db() as conn:
                     conn.execute(
@@ -262,17 +273,20 @@ async def upload_document(
                     )
         except Exception as e:
             logger.warning(f"Excel survey auto-ingest warning: {e}")
-    elif doc_type == "ACTUAL_PROCESS":
+    else:
+        if doc_type == "ACTUAL_PROCESS":
+            try:
+                actions = BPMNVerifier.extract_atomic_actions(extracted)
+                if actions:
+                    items = [{"sheet_name": "General", "raw_entry": a} for a in actions]
+                    inserted_ids = SurveyService.ingest_rows_into_survey(project_id, items)
+                    survey_count = len(inserted_ids)
+            except Exception as e:
+                logger.warning(f"Text survey auto-ingest warning: {e}")
         try:
-            with get_db() as conn:
-                existing = conn.execute("SELECT COUNT(*) as cnt FROM process_survey_rows WHERE project_id = ?", (project_id,)).fetchone()
-                if existing and existing["cnt"] == 0:
-                    actions = BPMNVerifier.extract_atomic_actions(extracted)
-                    if actions:
-                        items = [{"sheet_name": "General", "raw_entry": a} for a in actions]
-                        SurveyService.ingest_rows_into_survey(project_id, items)
+            evidence_summary = extract_handbook_evidence(project_id, extracted, file.filename or safe_filename, doc_type)
         except Exception as e:
-            logger.warning(f"Text survey auto-ingest warning: {e}")
+            logger.warning(f"Handbook evidence extraction warning: {e}")
 
     return {
         "id": doc_id,
@@ -280,7 +294,8 @@ async def upload_document(
         "doc_type": doc_type,
         "character_count": len(extracted),
         "pii_report": pii_report,
-        "survey_rows_created": survey_count
+        "survey_rows_created": survey_count,
+        "evidence_extracted": evidence_summary,
     }
 
 # 4. BPMN Generation with Scientific Verification
@@ -290,18 +305,22 @@ class BPMNGenerateRequest(BaseModel):
     policy_context: Optional[str] = ""
     provider: Optional[str] = None
     model_name: Optional[str] = None
+    base_url: Optional[str] = None
 
 @app.post("/api/v1/bpmn/generate")
 def generate_bpmn_from_text(
     req: BPMNGenerateRequest,
-    x_gemini_api_key: Optional[str] = Header(None)
+    x_llm_api_key: Optional[str] = Header(None),
+    x_gemini_api_key: Optional[str] = Header(None),
 ):
+    key = x_llm_api_key or x_gemini_api_key
     graph = BPMNEngine.generate_graph_from_text(
         process_text=req.process_text,
         policy_context=req.policy_context,
-        api_key=x_gemini_api_key,
+        api_key=key,
         provider=req.provider,
-        model_name=req.model_name
+        model_name=req.model_name,
+        base_url=req.base_url,
     )
     bpmn_xml = BPMNEngine.compile_graph_to_bpmn_xml(graph)
     bpmn_id = str(uuid.uuid4())
@@ -326,6 +345,23 @@ class BPMNUpdateRequest(BaseModel):
 
 @app.put("/api/v1/bpmn/update")
 def update_bpmn_xml(req: BPMNUpdateRequest):
+    graph_json = None
+    telemetry_dict = None
+    title = "Updated Model"
+    try:
+        parsed = BPMNParser.parse_xml_to_graph(req.bpmn_xml, fallback_title="Updated Model")
+        title = parsed.process_title or title
+        telemetry = BPMNVerifier.verify_graph(
+            graph_nodes=[n.model_dump() for n in parsed.nodes],
+            graph_edges=[e.model_dump() for e in parsed.edges],
+            source_text=" ".join(n.name for n in parsed.nodes),
+        )
+        parsed.telemetry = telemetry
+        graph_json = parsed.model_dump_json()
+        telemetry_dict = telemetry.model_dump()
+    except Exception as exc:
+        logger.warning(f"BPMN XML sync parse warning: {exc}")
+
     with get_db() as conn:
         latest = conn.execute(
             "SELECT version FROM bpmn_models WHERE project_id = ? ORDER BY version DESC LIMIT 1",
@@ -334,10 +370,10 @@ def update_bpmn_xml(req: BPMNUpdateRequest):
         new_version = (latest["version"] + 1) if latest else 1
         bpmn_id = str(uuid.uuid4())
         conn.execute(
-            "INSERT INTO bpmn_models (id, project_id, title, version, bpmn_xml) VALUES (?, ?, ?, ?, ?)",
-            (bpmn_id, req.project_id, "Updated Model", new_version, req.bpmn_xml)
+            "INSERT INTO bpmn_models (id, project_id, title, version, bpmn_xml, graph_json) VALUES (?, ?, ?, ?, ?, ?)",
+            (bpmn_id, req.project_id, title, new_version, req.bpmn_xml, graph_json)
         )
-    return {"id": bpmn_id, "version": new_version, "status": "saved"}
+    return {"id": bpmn_id, "version": new_version, "status": "saved", "telemetry": telemetry_dict}
 
 # 5. ISO 27002 Controls & Excel Explorer
 @app.get("/api/v1/iso/controls")
@@ -356,18 +392,22 @@ class RunGapAnalysisRequest(BaseModel):
     selected_control_ids: Optional[List[str]] = None
     provider: Optional[str] = None
     model_name: Optional[str] = None
+    base_url: Optional[str] = None
 
 @app.post("/api/v1/analysis/gaps")
 def run_gap_analysis(
     req: RunGapAnalysisRequest,
-    x_gemini_api_key: Optional[str] = Header(None)
+    x_llm_api_key: Optional[str] = Header(None),
+    x_gemini_api_key: Optional[str] = Header(None),
 ):
+    key = x_llm_api_key or x_gemini_api_key
     with get_db() as conn:
         docs = conn.execute("SELECT * FROM documents WHERE project_id = ?", (req.project_id,)).fetchall()
         bpmn = conn.execute("SELECT * FROM bpmn_models WHERE project_id = ? ORDER BY version DESC LIMIT 1", (req.project_id,)).fetchone()
         
-    actual_texts = [d["extracted_text"] for d in docs if d["doc_type"] == "ACTUAL_PROCESS"]
-    policy_texts = [d["extracted_text"] for d in docs if d["doc_type"] == "FORMAL_POLICY"]
+    # Privacy-by-default: always prefer PII-redacted text before external LLM calls
+    actual_texts = [(d["redacted_text"] or d["extracted_text"]) for d in docs if d["doc_type"] == "ACTUAL_PROCESS"]
+    policy_texts = [(d["redacted_text"] or d["extracted_text"]) for d in docs if d["doc_type"] == "FORMAL_POLICY"]
     
     p_text = "\n\n".join(actual_texts) or "Operational staff complete tasks manually without formal verification."
     pol_text = "\n\n".join(policy_texts) or "Standard ISO 27002 administrative baseline rules."
@@ -384,10 +424,48 @@ def run_gap_analysis(
         policy_text=pol_text,
         bpmn_xml=bpmn_xml,
         selected_controls=candidate_controls,
-        api_key=x_gemini_api_key,
+        api_key=key,
         provider=req.provider,
-        model_name=req.model_name
+        model_name=req.model_name,
+        base_url=req.base_url,
     )
+
+    # Merge deterministic entity-graph & AST plothole findings (mapping_verifier single source of truth)
+    try:
+        from app.services.ir_engine import analyze_plotholes
+        from app.services.gap_analyzer import GapFinding
+
+        with get_db() as conn:
+            s_rows = [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT * FROM process_survey_rows WHERE project_id = ? ORDER BY row_order ASC",
+                    (req.project_id,),
+                ).fetchall()
+            ]
+        plothole_report = analyze_plotholes(req.project_id, s_rows)
+        existing_titles = {f.control_title.lower() for f in result.findings}
+        for ph in plothole_report["plotholes"]:
+            title = f"{ph['kind'].replace('_', ' ').title()}: {ph.get('entry') or 'Workflow'}"
+            if title.lower() in existing_titles:
+                continue
+            existing_titles.add(title.lower())
+            result.findings.append(
+                GapFinding(
+                    control_id=ph.get("req_id") or "IR-CHECK",
+                    control_title=title[:80],
+                    chapter="BSI / AST Structural Verification",
+                    status="CRITICAL_GAP" if ph["severity"] == "CRITICAL" else "PARTIAL_GAP",
+                    policy_claim="All processes, systems, owners, exception paths, and recovery targets (RTO < MTPD) must be verified.",
+                    operational_reality=ph["message"],
+                    plain_english_gap=ph["message"],
+                    actionable_todos=["Resolve this open structural gap in the Guided Survey or Entity Structure panel."],
+                    roles_to_consult=["Process Owner", "IT Security Officer"],
+                    compensating_controls=["Document temporary manual workaround and owner until formal control is verified."],
+                )
+            )
+    except Exception as exc:
+        logger.warning(f"Deterministic plothole merge warning: {exc}")
 
     with get_db() as conn:
         conn.execute("DELETE FROM gap_assessments WHERE project_id = ?", (req.project_id,))
@@ -616,6 +694,9 @@ def get_project_diagnostics(project_id: str):
 @app.delete("/api/v1/gdpr/purge/{project_id}")
 def gdpr_purge_project(project_id: str):
     with get_db() as conn:
+        conn.execute("DELETE FROM entity_requirement_assessments WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM entity_dependencies WHERE project_id = ?", (project_id,))
+        conn.execute("DELETE FROM org_entities WHERE project_id = ?", (project_id,))
         conn.execute("DELETE FROM gap_assessments WHERE project_id = ?", (project_id,))
         conn.execute("DELETE FROM bpmn_models WHERE project_id = ?", (project_id,))
         conn.execute("DELETE FROM process_survey_rows WHERE project_id = ?", (project_id,))
@@ -800,6 +881,168 @@ def download_standard_workbook(workbook: str):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         filename=os.path.basename(path),
     )
+
+# 12. Object-Centric Entity Structure, Plotholes IR & NIST OSCAL Export
+class EntityCreateRequest(BaseModel):
+    entity_type: str
+    name: str
+    description: Optional[str] = None
+    parent_id: Optional[str] = None
+    owner_role: Optional[str] = None
+    confidentiality: Optional[str] = None
+    integrity: Optional[str] = None
+    availability: Optional[str] = None
+    rto: Optional[float] = None
+    mtpd: Optional[float] = None
+
+class DependencyCreateRequest(BaseModel):
+    from_entity_id: str
+    to_entity_id: str
+    dependency_type: str = "SUPPORTS"
+    notes: Optional[str] = None
+
+@app.get("/api/v1/projects/{project_id}/entities")
+def get_project_entities(project_id: str):
+    from app.services.entity_service import EntityService
+
+    return EntityService.get_project_structure(project_id)
+
+@app.post("/api/v1/projects/{project_id}/entities")
+def create_project_entity(project_id: str, req: EntityCreateRequest):
+    from app.services.entity_service import EntityService
+
+    try:
+        ent = EntityService.upsert_entity(
+            project_id=project_id,
+            entity_type=req.entity_type,
+            name=req.name,
+            description=req.description,
+            parent_id=req.parent_id,
+            owner_role=req.owner_role,
+        )
+        if req.confidentiality:
+            EntityService.save_entity_assessment(
+                project_id, ent["id"], "R005", answer_value=req.confidentiality, justification="Declared via entity editor"
+            )
+        if req.integrity:
+            EntityService.save_entity_assessment(
+                project_id, ent["id"], "R006", answer_value=req.integrity, justification="Declared via entity editor"
+            )
+        if req.availability:
+            EntityService.save_entity_assessment(
+                project_id, ent["id"], "R007", answer_value=req.availability, justification="Declared via entity editor"
+            )
+        if req.mtpd is not None:
+            EntityService.save_entity_assessment(
+                project_id, ent["id"], "R017", answer_value=str(req.mtpd), answer_numeric=req.mtpd
+            )
+        if req.rto is not None:
+            EntityService.save_entity_assessment(
+                project_id, ent["id"], "R018", answer_value=str(req.rto), answer_numeric=req.rto,
+                context={"rto": req.rto, "mtpd": req.mtpd},
+            )
+        return EntityService.get_project_structure(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@app.delete("/api/v1/projects/{project_id}/entities/{entity_id}")
+def delete_project_entity(project_id: str, entity_id: str):
+    from app.services.entity_service import EntityService
+
+    deleted = EntityService.delete_entity(project_id, entity_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Entity not found")
+    return EntityService.get_project_structure(project_id)
+
+@app.post("/api/v1/projects/{project_id}/dependencies")
+def create_project_dependency(project_id: str, req: DependencyCreateRequest):
+    from app.services.entity_service import EntityService
+
+    try:
+        dep = EntityService.upsert_dependency(
+            project_id=project_id,
+            from_entity_id=req.from_entity_id,
+            to_entity_id=req.to_entity_id,
+            dependency_type=req.dependency_type,
+            notes=req.notes,
+        )
+        return {"dependency": dep, "structure": EntityService.get_project_structure(project_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@app.delete("/api/v1/projects/{project_id}/dependencies/{dep_id}")
+def delete_project_dependency(project_id: str, dep_id: str):
+    from app.services.entity_service import EntityService
+
+    deleted = EntityService.delete_dependency(project_id, dep_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Dependency not found")
+    return EntityService.get_project_structure(project_id)
+
+@app.get("/api/v1/projects/{project_id}/plotholes")
+def get_project_plotholes(project_id: str):
+    from app.services.ir_engine import analyze_plotholes
+
+    with get_db() as conn:
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT * FROM process_survey_rows WHERE project_id = ? ORDER BY row_order ASC",
+                (project_id,),
+            ).fetchall()
+        ]
+    return analyze_plotholes(project_id, rows)
+
+@app.get("/api/v1/export/oscal/{project_id}")
+def export_oscal_json(project_id: str):
+    """Export NIST OSCAL Assessment Results JSON for audit-as-code portability."""
+    from app.services.entity_service import EntityService
+
+    with get_db() as conn:
+        proj = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if not proj:
+            raise HTTPException(status_code=404, detail="Project not found")
+        gaps = [dict(g) for g in conn.execute("SELECT * FROM gap_assessments WHERE project_id = ?", (project_id,)).fetchall()]
+
+    structure = EntityService.get_project_structure(project_id)
+    oscal_doc = {
+        "assessment-results": {
+            "uuid": project_id,
+            "metadata": {
+                "title": f"PMGA Assessment Results — {proj['title']}",
+                "last-modified": proj["updated_at"],
+                "version": "1.1.0",
+                "oscal-version": "1.1.2",
+            },
+            "results": [
+                {
+                    "uuid": str(uuid.uuid4()),
+                    "title": proj["title"],
+                    "description": proj["description"] or "",
+                    "observations": [
+                        {
+                            "uuid": a["id"],
+                            "title": f"{a['req_id']} ({a['status']})",
+                            "description": a.get("justification") or a.get("answer_value") or "",
+                            "relevant-evidence": json.loads(a.get("evidence_json") or "[]"),
+                        }
+                        for ent in structure["entities"]
+                        for a in ent.get("assessments", [])
+                    ],
+                    "findings": [
+                        {
+                            "uuid": g["id"],
+                            "title": f"{g['control_id']} — {g['control_title']}",
+                            "description": g["plain_english_gap"],
+                            "target": {"status": {"state": "satisfied" if g["status"] == "COMPLIANT" else "not-satisfied"}},
+                        }
+                        for g in gaps
+                    ],
+                }
+            ],
+        }
+    }
+    return JSONResponse(content=oscal_doc)
 
 # Static Assets
 app.mount("/static", StaticFiles(directory="static"), name="static")

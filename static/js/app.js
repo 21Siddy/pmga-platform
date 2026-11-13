@@ -30,12 +30,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   const modalByok = document.getElementById('modal-byok');
   const btnCloseByok = document.getElementById('btn-close-byok');
   const btnSaveByok = document.getElementById('btn-save-byok');
+  const btnTestLlm = document.getElementById('btn-test-llm');
   const selectLlmProvider = document.getElementById('select-llm-provider');
+  const inputLlmModel = document.getElementById('input-llm-model');
+  const llmBaseUrlGroup = document.getElementById('llm-base-url-group');
+  const inputLlmBaseUrl = document.getElementById('input-llm-base-url');
   const inputGeminiKey = document.getElementById('input-gemini-key');
   const geminiKeyGroup = document.getElementById('gemini-key-group');
   const kiconnectInfoGroup = document.getElementById('kiconnect-info-group');
   const kiconnectStatusText = document.getElementById('kiconnect-status-text');
+  const llmTestResult = document.getElementById('llm-test-result');
   const chkSaveLocal = document.getElementById('chk-save-local');
+  let providerRegistry = [];
 
   // Status Toast
   const statusToast = document.getElementById('status-toast');
@@ -207,42 +213,71 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ============================================================================
   // LLM STATUS & MODAL ROUTING
   // ============================================================================
+  function syncByokProviderFields(providerId) {
+    const spec = providerRegistry.find(p => p.id === providerId);
+    const needsBaseUrl = spec ? spec.needs_base_url : (providerId === 'azure' || providerId === 'kiconnect');
+    llmBaseUrlGroup.classList.toggle('hidden', !needsBaseUrl);
+
+    if (spec) {
+      inputLlmModel.placeholder = spec.default_model || 'Enter model or deployment name';
+      if (!inputLlmModel.value.trim() && spec.default_model) {
+        inputLlmModel.value = spec.default_model;
+      }
+      if (needsBaseUrl && !inputLlmBaseUrl.value.trim() && spec.base_url) {
+        inputLlmBaseUrl.value = spec.base_url;
+      }
+    }
+    geminiKeyGroup.classList.remove('hidden');
+    kiconnectInfoGroup.classList.toggle('hidden', providerId !== 'kiconnect');
+  }
+
   async function updateLlmStatus() {
     try {
       const status = await API.getLLMStatus();
-      const currentProvider = API.getProvider();
-      selectLlmProvider.value = currentProvider;
-
-      if (currentProvider === 'gemini') {
-        const key = API.getApiKey();
-        if (key || status.gemini.configured) {
-          byokStatusBtn.classList.add('configured');
-          byokStatusBtn.classList.remove('unconfigured');
-          byokLabel.textContent = 'Gemini (3.8-flash): Ready';
-        } else {
-          byokStatusBtn.classList.add('unconfigured');
-          byokStatusBtn.classList.remove('configured');
-          byokLabel.textContent = 'Gemini Key Unset';
-        }
-        geminiKeyGroup.classList.remove('hidden');
-        kiconnectInfoGroup.classList.add('hidden');
-      } else {
-        if (status.kiconnect.configured) {
-          byokStatusBtn.classList.add('configured');
-          byokStatusBtn.classList.remove('unconfigured');
-          byokLabel.textContent = 'Uni KI-Connect: Ready';
-          kiconnectStatusText.textContent = `Active Model: ${status.kiconnect.model} | Pacing: ${status.min_interval_sec}s`;
-        } else {
-          byokStatusBtn.classList.add('unconfigured');
-          byokStatusBtn.classList.remove('configured');
-          byokLabel.textContent = 'Uni KI-Connect: Check .env';
-          kiconnectStatusText.textContent = 'API_BASE or API_KEY missing in .env file.';
-        }
-        geminiKeyGroup.classList.add('hidden');
-        kiconnectInfoGroup.classList.remove('hidden');
+      providerRegistry = status.providers || [];
+      if (providerRegistry.length > 0) {
+        selectLlmProvider.innerHTML = '';
+        providerRegistry.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.default_model ? `${p.label} (${p.default_model})` : p.label;
+          selectLlmProvider.appendChild(opt);
+        });
       }
 
-      inputGeminiKey.value = API.getApiKey();
+      const currentProvider = API.getProvider();
+      selectLlmProvider.value = currentProvider;
+      const spec = providerRegistry.find(p => p.id === currentProvider);
+      const key = API.getApiKey();
+      const savedModel = API.getModelName();
+      const savedBaseUrl = API.getBaseUrl();
+
+      inputGeminiKey.value = key;
+      inputLlmModel.value = savedModel || (spec ? spec.default_model : '');
+      inputLlmBaseUrl.value = savedBaseUrl || (spec ? spec.base_url : '');
+      syncByokProviderFields(currentProvider);
+
+      const serverConfigured =
+        (currentProvider === 'gemini' && status.gemini && status.gemini.configured) ||
+        (currentProvider === 'kiconnect' && status.kiconnect && status.kiconnect.configured);
+
+      if (key || serverConfigured) {
+        byokStatusBtn.classList.add('configured');
+        byokStatusBtn.classList.remove('unconfigured');
+        const labelName = spec ? spec.label : currentProvider;
+        const modelLabel = inputLlmModel.value.trim() || (spec ? spec.default_model : '');
+        byokLabel.textContent = modelLabel ? `${labelName} (${modelLabel})` : `${labelName}: Ready`;
+      } else {
+        byokStatusBtn.classList.add('unconfigured');
+        byokStatusBtn.classList.remove('configured');
+        byokLabel.textContent = 'Offline Mode (Set AI Key)';
+      }
+
+      if (currentProvider === 'kiconnect') {
+        kiconnectStatusText.textContent = status.kiconnect.configured
+          ? `Server gateway ready: ${status.kiconnect.model} | Pacing: ${status.min_interval_sec}s`
+          : 'Paste your endpoint URL and API key above.';
+      }
     } catch (e) {
       console.warn('Could not fetch LLM status:', e);
     }
@@ -250,26 +285,62 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   selectLlmProvider.addEventListener('change', (e) => {
     const prov = e.target.value;
-    if (prov === 'gemini') {
-      geminiKeyGroup.classList.remove('hidden');
-      kiconnectInfoGroup.classList.add('hidden');
-    } else {
-      geminiKeyGroup.classList.add('hidden');
-      kiconnectInfoGroup.classList.remove('hidden');
+    const spec = providerRegistry.find(p => p.id === prov);
+    inputLlmModel.value = spec ? (spec.default_model || '') : '';
+    inputLlmBaseUrl.value = spec ? (spec.base_url || '') : '';
+    llmTestResult.classList.add('hidden');
+    syncByokProviderFields(prov);
+  });
+
+  byokStatusBtn.addEventListener('click', () => {
+    llmTestResult.classList.add('hidden');
+    modalByok.classList.add('open');
+  });
+  btnCloseByok.addEventListener('click', () => modalByok.classList.remove('open'));
+
+  btnTestLlm.addEventListener('click', async () => {
+    const prov = selectLlmProvider.value;
+    const model = inputLlmModel.value.trim();
+    const baseUrl = inputLlmBaseUrl.value.trim();
+    const key = inputGeminiKey.value.trim();
+
+    btnTestLlm.disabled = true;
+    btnTestLlm.textContent = 'Testing...';
+    llmTestResult.classList.remove('hidden');
+    llmTestResult.textContent = 'Running single live connection check...';
+
+    try {
+      const res = await API.testLLMConnection({
+        provider: prov,
+        model_name: model,
+        base_url: baseUrl,
+        api_key: key
+      });
+      if (res.ok) {
+        llmTestResult.textContent = `OK (${res.latency_ms} ms): ${res.message}`;
+        llmTestResult.style.color = '#10b981';
+      } else {
+        llmTestResult.textContent = `Failed (${res.error_kind || 'error'}): ${res.message}`;
+        llmTestResult.style.color = '#ef4444';
+      }
+    } catch (err) {
+      llmTestResult.textContent = `Error: ${err.message}`;
+      llmTestResult.style.color = '#ef4444';
+    } finally {
+      btnTestLlm.disabled = false;
+      btnTestLlm.textContent = 'Test Connection';
     }
   });
 
-  byokStatusBtn.addEventListener('click', () => modalByok.classList.add('open'));
-  btnCloseByok.addEventListener('click', () => modalByok.classList.remove('open'));
   btnSaveByok.addEventListener('click', () => {
     const prov = selectLlmProvider.value;
     API.setProvider(prov);
-    if (prov === 'gemini') {
-      API.setApiKey(inputGeminiKey.value.trim(), chkSaveLocal.checked);
-    }
+    API.setModelName(inputLlmModel.value.trim());
+    API.setBaseUrl(inputLlmBaseUrl.value.trim());
+    API.setApiKey(inputGeminiKey.value.trim(), chkSaveLocal.checked);
     updateLlmStatus();
     modalByok.classList.remove('open');
-    showToast('LLM configuration saved and activated.', 'success');
+    showToast('AI provider configuration active for this session (not written to disk).', 'success');
   });
 
   // ============================================================================
@@ -378,8 +449,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
 
-      // Load survey rows and questions
+      // Load survey rows, entity structure, and start guide
       await loadSurvey(projId);
+      await loadStructure(projId);
       await StartGuide.refresh(projId);
 
       // Load gaps if available
@@ -590,8 +662,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       await loadSurvey(activeProjectId);
+      await loadStructure(activeProjectId);
       await StartGuide.refresh(activeProjectId);
-      showToast('Answer recorded verbatim. Diagram updated.', 'success', 2500);
+      showToast('Answer recorded verbatim. Diagram & structure updated.', 'success', 2500);
     } catch (err) {
       showToast('Failed to record answer: ' + err.message, 'error');
     } finally {
@@ -657,8 +730,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await API.uploadDocument(activeProjectId, 'ACTUAL_PROCESS', file);
       inputActual.value = res.pii_report.has_pii ? res.pii_report.redacted_text : inputActual.value;
       await loadSurvey(activeProjectId);
+      await loadStructure(activeProjectId);
       await StartGuide.refresh(activeProjectId);
-      showToast(`'${file.name}' ingested. Verbatim survey rows generated.`, 'success');
+      const proven = (res.evidence_extracted && res.evidence_extracted.assessments_proven) || 0;
+      showToast(`'${file.name}' ingested (${res.survey_rows_created} rows, ${proven} proven citations).`, 'success');
     } catch (err) {
       showToast('Upload error: ' + err.message, 'error');
     }
@@ -677,8 +752,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const res = await API.uploadDocument(activeProjectId, 'FORMAL_POLICY', file);
       inputFormal.value = res.pii_report.has_pii ? res.pii_report.redacted_text : inputFormal.value;
+      await loadStructure(activeProjectId);
       await StartGuide.refresh(activeProjectId);
-      showToast(`Directive '${file.name}' ingested for compliance context.`, 'success');
+      const proven = (res.evidence_extracted && res.evidence_extracted.assessments_proven) || 0;
+      showToast(`Directive '${file.name}' ingested (${proven} proven citations).`, 'success');
     } catch (err) {
       showToast('Upload error: ' + err.message, 'error');
     }
@@ -1011,6 +1088,141 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnRunGapAnalysis.textContent = 'Run Plain-English Gap Analysis →';
     }
   });
+
+  // ============================================================================
+  // OBJECT-CENTRIC STRUCTURE TREE & PLOTHOLES
+  // ============================================================================
+  const structureSummaryHint = document.getElementById('structure-summary-hint');
+  const entityTreeContainer = document.getElementById('entity-tree-container');
+  const plotholesContainer = document.getElementById('plotholes-container');
+  const selectEntityType = document.getElementById('select-entity-type');
+  const inputEntityName = document.getElementById('input-entity-name');
+  const inputEntityOwner = document.getElementById('input-entity-owner');
+  const selectEntityParent = document.getElementById('select-entity-parent');
+  const btnAddEntity = document.getElementById('btn-add-entity');
+  const btnExportOscal = document.getElementById('btn-export-oscal-report');
+
+  function renderEntityBranch(node, depth = 0) {
+    const pad = depth * 18;
+    const ownerTag = node.owner_role ? `<span class="subtext">Owner: ${escapeHtml(node.owner_role)}</span>` : '';
+    const inh = node.inherited_protection;
+    let inhBadge = '';
+    if (inh && (inh.confidentiality || inh.integrity || inh.availability || inh.rto !== null)) {
+      const parts = [
+        inh.confidentiality ? `C:${inh.confidentiality}` : '',
+        inh.integrity ? `I:${inh.integrity}` : '',
+        inh.availability ? `A:${inh.availability}` : '',
+        inh.rto !== null && inh.rto !== undefined ? `RTO:${inh.rto}h` : ''
+      ].filter(Boolean);
+      if (parts.length) {
+        inhBadge = `<span class="kind-badge process" title="Inherited via BSI Maximumprinzip">Inherited ${escapeHtml(parts.join(' / '))}</span>`;
+      }
+    }
+    const provenCount = (node.assessments || []).filter(a => a.status !== 'NEEDS_USER_INPUT').length;
+    const evidenceBadge = provenCount > 0 ? `<span class="subtext">${provenCount} verified rule(s)</span>` : '';
+    const childrenHtml = (node.children || []).map(c => renderEntityBranch(c, depth + 1)).join('');
+
+    return `
+      <div style="margin-left: ${pad}px; padding: 6px 8px; border-left: 2px solid var(--border-subtle, #334155); margin-bottom: 4px;">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span class="kind-badge">${escapeHtml(node.entity_type)}</span>
+          <strong>${escapeHtml(node.name)}</strong>
+          ${ownerTag}
+          ${inhBadge}
+          ${evidenceBadge}
+          <button type="button" class="pill-btn secondary btn-del-entity" data-id="${escapeHtml(node.id)}" style="margin-left: auto; padding: 2px 8px; font-size: 0.75rem;">Remove</button>
+        </div>
+        ${childrenHtml}
+      </div>
+    `;
+  }
+
+  async function loadStructure(projId) {
+    if (!projId) return;
+    try {
+      const [struct, ph] = await Promise.all([
+        API.getEntities(projId),
+        API.getPlotholes(projId)
+      ]);
+      structureSummaryHint.textContent = `${struct.total_entities} entities, ${struct.total_dependencies} links`;
+
+      selectEntityParent.innerHTML = '<option value="">No Parent (Top-Level)</option>';
+      (struct.entities || []).forEach(e => {
+        const opt = document.createElement('option');
+        opt.value = e.id;
+        opt.textContent = `[${e.entity_type}] ${e.name}`;
+        selectEntityParent.appendChild(opt);
+      });
+
+      if (!struct.tree || struct.tree.length === 0) {
+        entityTreeContainer.innerHTML = '<span class="empty-state">Upload documents or answer survey questions to build the entity hierarchy.</span>';
+      } else {
+        entityTreeContainer.innerHTML = struct.tree.map(n => renderEntityBranch(n, 0)).join('');
+        entityTreeContainer.querySelectorAll('.btn-del-entity').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              await API.deleteEntity(projId, btn.dataset.id);
+              await loadStructure(projId);
+              showToast('Entity removed.', 'info', 2000);
+            } catch (err) {
+              showToast('Failed to remove entity: ' + err.message, 'error');
+            }
+          });
+        });
+      }
+
+      if (ph && ph.plotholes && ph.plotholes.length > 0) {
+        plotholesContainer.innerHTML = `
+          <div class="subtext" style="margin-bottom: 4px;"><strong>Open Structural Gaps / Plotholes (${ph.plothole_count}):</strong></div>
+          <ul style="margin: 0; padding-left: 18px; font-size: 0.85rem;">
+            ${ph.plotholes.slice(0, 6).map(p => `<li><strong>[${escapeHtml(p.severity)}]</strong> ${escapeHtml(p.message)}</li>`).join('')}
+          </ul>
+        `;
+      } else {
+        plotholesContainer.innerHTML = '';
+      }
+    } catch (err) {
+      console.warn('Could not load structure:', err);
+    }
+  }
+
+  if (btnAddEntity) {
+    btnAddEntity.addEventListener('click', async () => {
+      if (!activeProjectId) {
+        showToast('Select or create an assessment first.', 'info');
+        return;
+      }
+      const name = inputEntityName.value.trim();
+      if (!name) {
+        showToast('Enter an entity name.', 'error');
+        return;
+      }
+      try {
+        await API.createEntity(activeProjectId, {
+          entity_type: selectEntityType.value,
+          name,
+          owner_role: inputEntityOwner.value.trim() || null,
+          parent_id: selectEntityParent.value || null
+        });
+        inputEntityName.value = '';
+        inputEntityOwner.value = '';
+        await loadStructure(activeProjectId);
+        showToast('Entity added to hierarchy.', 'success', 2000);
+      } catch (err) {
+        showToast('Error adding entity: ' + err.message, 'error');
+      }
+    });
+  }
+
+  if (btnExportOscal) {
+    btnExportOscal.addEventListener('click', () => {
+      if (!activeProjectId) {
+        showToast('Please select or create an assessment first.', 'error');
+        return;
+      }
+      window.location.href = `/api/v1/export/oscal/${activeProjectId}`;
+    });
+  }
 
   // ============================================================================
   // EXPORTS & NON-BLOCKING GDPR PURGE

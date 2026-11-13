@@ -111,8 +111,8 @@ class BPMNVerifier:
 
         matched_count = 0
         for action in extracted_actions:
-            # Token match heuristic
-            action_tokens = [w.lower() for w in re.findall(r'\b[a-zA-Z]{4,}\b', action)]
+            # Token match heuristic (Unicode-aware for German umlauts and ß)
+            action_tokens = [w.lower() for w in re.findall(r'[^\W\d_]{4,}', action, re.UNICODE)]
             matches = [t for t in action_tokens if t in node_names]
             if len(matches) >= max(1, len(action_tokens) // 2):
                 matched_count += 1

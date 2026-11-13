@@ -1,34 +1,61 @@
 /**
  * PMGA API Client
- * Supports Google Gemini & University KI-Connect (OpenAI-compatible) with rate-limit pacing.
+ * Supports multi-provider BYOK (Gemini, OpenAI, Anthropic, Mistral, Azure, University gateway).
+ * Keys are held in memory / sessionStorage for the current run only — never written to disk.
  */
 
 const API = {
+  _runtimeKey: '',
+
   getApiKey() {
-    return localStorage.getItem('pmga_gemini_key') || sessionStorage.getItem('pmga_gemini_key') || '';
+    return this._runtimeKey || sessionStorage.getItem('pmga_llm_key') || '';
   },
 
-  setApiKey(key, persist = true) {
-    if (persist) {
-      localStorage.setItem('pmga_gemini_key', key);
+  setApiKey(key, keepInSession = true) {
+    const clean = (key || '').trim();
+    this._runtimeKey = clean;
+    localStorage.removeItem('pmga_gemini_key');
+    if (keepInSession && clean) {
+      sessionStorage.setItem('pmga_llm_key', clean);
     } else {
-      sessionStorage.setItem('pmga_gemini_key', key);
+      sessionStorage.removeItem('pmga_llm_key');
     }
   },
 
   getProvider() {
-    return localStorage.getItem('pmga_llm_provider') || 'gemini';
+    return sessionStorage.getItem('pmga_llm_provider') || localStorage.getItem('pmga_llm_provider') || 'gemini';
   },
 
   setProvider(provider) {
+    sessionStorage.setItem('pmga_llm_provider', provider);
     localStorage.setItem('pmga_llm_provider', provider);
   },
 
-  getHeaders() {
+  getModelName() {
+    return sessionStorage.getItem('pmga_llm_model') || '';
+  },
+
+  setModelName(modelName) {
+    const clean = (modelName || '').trim();
+    if (clean) sessionStorage.setItem('pmga_llm_model', clean);
+    else sessionStorage.removeItem('pmga_llm_model');
+  },
+
+  getBaseUrl() {
+    return sessionStorage.getItem('pmga_llm_base_url') || '';
+  },
+
+  setBaseUrl(baseUrl) {
+    const clean = (baseUrl || '').trim();
+    if (clean) sessionStorage.setItem('pmga_llm_base_url', clean);
+    else sessionStorage.removeItem('pmga_llm_base_url');
+  },
+
+  getHeaders(overrideKey = null) {
     const headers = {};
-    const key = this.getApiKey();
+    const key = overrideKey !== null ? (overrideKey || '').trim() : this.getApiKey();
     if (key) {
-      headers['X-Gemini-API-Key'] = key;
+      headers['X-LLM-API-Key'] = key;
     }
     return headers;
   },
@@ -51,6 +78,27 @@ const API = {
 
   async getLLMStatus() {
     const res = await fetch('/api/v1/llm/status');
+    return this.handleResponse(res);
+  },
+
+  async getLLMProviders() {
+    const res = await fetch('/api/v1/llm/providers');
+    return this.handleResponse(res);
+  },
+
+  async testLLMConnection({ provider, model_name, base_url, api_key }) {
+    const res = await fetch('/api/v1/llm/test', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getHeaders(api_key)
+      },
+      body: JSON.stringify({
+        provider,
+        model_name: model_name || null,
+        base_url: base_url || null
+      })
+    });
     return this.handleResponse(res);
   },
 
@@ -114,7 +162,9 @@ const API = {
         project_id: projectId,
         process_text: processText,
         policy_context: policyContext,
-        provider: this.getProvider()
+        provider: this.getProvider(),
+        model_name: this.getModelName() || null,
+        base_url: this.getBaseUrl() || null
       })
     });
     return this.handleResponse(res);
@@ -148,7 +198,9 @@ const API = {
       body: JSON.stringify({
         project_id: projectId,
         selected_control_ids: selectedControlIds,
-        provider: this.getProvider()
+        provider: this.getProvider(),
+        model_name: this.getModelName() || null,
+        base_url: this.getBaseUrl() || null
       })
     });
     return this.handleResponse(res);
@@ -212,6 +264,41 @@ const API = {
 
   async getDiagnostics(projectId) {
     const res = await fetch(`/api/v1/diagnostics/${projectId}`);
+    return this.handleResponse(res);
+  },
+
+  async getEntities(projectId) {
+    const res = await fetch(`/api/v1/projects/${projectId}/entities`);
+    return this.handleResponse(res);
+  },
+
+  async createEntity(projectId, payload) {
+    const res = await fetch(`/api/v1/projects/${projectId}/entities`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return this.handleResponse(res);
+  },
+
+  async deleteEntity(projectId, entityId) {
+    const res = await fetch(`/api/v1/projects/${projectId}/entities/${entityId}`, {
+      method: 'DELETE'
+    });
+    return this.handleResponse(res);
+  },
+
+  async createDependency(projectId, payload) {
+    const res = await fetch(`/api/v1/projects/${projectId}/dependencies`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return this.handleResponse(res);
+  },
+
+  async getPlotholes(projectId) {
+    const res = await fetch(`/api/v1/projects/${projectId}/plotholes`);
     return this.handleResponse(res);
   }
 };

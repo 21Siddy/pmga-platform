@@ -25,7 +25,7 @@ class MateiEvaluator:
 
     @staticmethod
     def _tokenize(text: str) -> Set[str]:
-        words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
+        words = re.findall(r'[^\W\d_]{3,}', text.lower(), re.UNICODE)
         return set(words)
 
     @staticmethod
