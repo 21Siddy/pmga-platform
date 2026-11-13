@@ -1,0 +1,333 @@
+/* ==============================================================================
+   PMGA LANDING — OBSIDIAN & ELECTRIC CYBER STUDIO
+   Human-crafted editorial layout using exact studio tokens (zero gradients).
+   ============================================================================== */
+
+.landing-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 48px 28px 84px;
+}
+
+.landing-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.landing-nav-links a {
+  color: var(--ink-secondary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.landing-nav-links a:hover,
+.landing-nav-links a:focus-visible {
+  color: var(--ink-primary);
+}
+
+/* --- Hero Split --- */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 48px;
+  align-items: center;
+  padding: 24px 0 64px;
+  border-bottom: var(--border-hairline);
+}
+
+.hero-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--accent-cyan-text);
+  margin-bottom: 14px;
+}
+
+.hero-title {
+  font-size: clamp(1.9rem, 3.2vw, 2.65rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--ink-primary);
+  margin-bottom: 18px;
+}
+
+.hero-lead {
+  font-size: 1.05rem;
+  color: var(--ink-secondary);
+  line-height: 1.65;
+  max-width: 56ch;
+  margin-bottom: 28px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.hero-cta-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.hero-footnote {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--ink-secondary);
+}
+
+/* --- Interactive Visual Preview Panel --- */
+.preview-stage {
+  background-color: var(--bg-surface);
+  border: var(--border-strong);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.stage-tabs {
+  display: flex;
+  border-bottom: var(--border-hairline);
+  background-color: var(--bg-elevated);
+}
+
+.stage-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-secondary);
+  font-family: var(--font-ui);
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 12px 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.stage-tab:hover {
+  color: var(--ink-primary);
+}
+
+.stage-tab.active {
+  color: var(--ink-primary);
+  background-color: var(--bg-surface);
+  border-bottom-color: var(--accent-blue);
+}
+
+.stage-body {
+  padding: 20px;
+  min-height: 310px;
+}
+
+.stage-pane {
+  display: none;
+}
+
+.stage-pane.active {
+  display: block;
+}
+
+.stage-caption {
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+  margin-bottom: 14px;
+}
+
+.graph-flow-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.graph-flow-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background-color: var(--bg-canvas);
+  border: var(--border-hairline);
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+
+.graph-flow-row strong {
+  color: var(--ink-primary);
+}
+
+.mono-tag {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--accent-emerald-text);
+}
+
+.mono-tag.warn {
+  color: var(--accent-amber-text);
+}
+
+.mono-tag.info {
+  color: var(--accent-blue-text);
+}
+
+.code-preview {
+  background-color: var(--bg-dark);
+  border: var(--border-hairline);
+  border-radius: 6px;
+  padding: 14px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--ink-primary);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* --- Sections --- */
+.landing-section {
+  padding: 56px 0;
+  border-bottom: var(--border-hairline);
+}
+
+.landing-section:last-of-type {
+  border-bottom: none;
+}
+
+.section-heading {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+  margin-bottom: 8px;
+}
+
+.section-sub {
+  color: var(--ink-secondary);
+  font-size: 0.96rem;
+  max-width: 68ch;
+  margin-bottom: 28px;
+}
+
+/* --- 4-Step Editorial Grid (No nested cards) --- */
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.step-item {
+  border-top: 2px solid var(--border-strong);
+  padding-top: 16px;
+}
+
+.step-num-mono {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--accent-cyan-text);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.step-item h3 {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+  margin-bottom: 8px;
+}
+
+.step-item p {
+  font-size: 0.9rem;
+  color: var(--ink-secondary);
+  line-height: 1.55;
+}
+
+/* --- Standards Table --- */
+.landing-table-wrap {
+  border: var(--border-hairline);
+  border-radius: 8px;
+  overflow-x: auto;
+  background-color: var(--bg-surface);
+}
+
+/* --- BYOK & Offline Guarantee Split --- */
+.guarantee-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+
+.guarantee-col {
+  padding-left: 16px;
+  border-left: 2px solid var(--accent-blue);
+}
+
+.guarantee-col.offline {
+  border-left-color: var(--accent-emerald);
+}
+
+.guarantee-col h3 {
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+  color: var(--ink-primary);
+}
+
+.guarantee-col p,
+.guarantee-col li {
+  font-size: 0.92rem;
+  color: var(--ink-secondary);
+  line-height: 1.6;
+}
+
+.guarantee-col ul {
+  margin-top: 10px;
+  padding-left: 18px;
+}
+
+/* --- Footer --- */
+.landing-footer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 28px 48px;
+  border-top: var(--border-hairline);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--ink-secondary);
+  font-size: 0.85rem;
+}
+
+.landing-footer a {
+  color: var(--accent-blue-text);
+  text-decoration: none;
+}
+
+.landing-footer a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 960px) {
+  .hero-grid,
+  .guarantee-grid {
+    grid-template-columns: 1fr;
+  }
+  .steps-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .landing-nav-links {
+    display: none;
+  }
+  .steps-grid {
+    grid-template-columns: 1fr;
+  }
+}

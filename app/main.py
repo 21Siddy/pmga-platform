@@ -1046,6 +1046,11 @@ def export_oscal_json(project_id: str):
 
 # Static Assets
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 @app.get("/")
-def get_index():
+def get_landing():
+    return FileResponse("static/landing.html")
+
+@app.get("/studio")
+def get_studio():
     return FileResponse("static/index.html")

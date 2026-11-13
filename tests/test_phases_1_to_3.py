@@ -207,3 +207,13 @@ def test_phase3_smart_excel_dedup_handbook_citations_ast_plotholes_and_oscal():
     oscal = client.get(f"/api/v1/export/oscal/{pid}")
     assert oscal.status_code == 200
     assert "assessment-results" in oscal.json()
+
+
+def test_landing_and_studio_routes():
+    landing = client.get("/")
+    assert landing.status_code == 200
+    assert "Open Workbench Studio" in landing.text
+
+    studio = client.get("/studio")
+    assert studio.status_code == 200
+    assert "Interactive BPMN 2.0 Studio" in studio.text
