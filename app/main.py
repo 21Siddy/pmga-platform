@@ -1,5 +1,7 @@
 import os
+import re
 import json
+import time
 import uuid
 import logging
 from contextlib import asynccontextmanager
@@ -11,7 +13,14 @@ from fastapi.responses import JSONResponse, FileResponse, Response
 from pydantic import BaseModel
 
 from app.config import settings
-from app.database import init_db, get_db
+from app.database import init_db, get_db, purge_project_data
+from app.errors import (
+    PMGAError,
+    PayloadTooLargeError,
+    UnsupportedMediaError,
+    ValidationError,
+)
+from app.logging_config import configure_logging, log_context, request_id_var
 from app.seed import ensure_initial_datasets
 from app.services.document_service import DocumentService
 from app.services.iso_excel_service import ISOExcelService
@@ -25,34 +34,74 @@ from app.services.gap_analyzer import GapAnalyzer
 from app.services.survey_service import SurveyService
 from app.services.bpmn_verifier import BPMNVerifier
 
+configure_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
 logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Automatic application lifecycle manager."""
+    configure_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
     init_db()
     ensure_initial_datasets()
+    logger.info("PMGA v2 application startup complete (env=%s)", settings.APP_ENV)
     yield
+
 
 app = FastAPI(
     title="PMGA — Process Management and Gap Analysis",
     description="GovTech & Critical Infrastructure Process Modeling and Compliance Gap Workbench",
-    version="1.1.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(PMGAError)
+async def pmga_domain_exception_handler(request: Request, exc: PMGAError):
+    req_id = request_id_var.get()
+    logger.warning(
+        "Domain error [%s] on %s: %s",
+        exc.error_code,
+        request.url.path,
+        exc.message,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_payload(request_id=req_id, path=request.url.path),
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    req_id = request_id_var.get()
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.detail,
+            "error_code": f"HTTP_{exc.status_code}",
+            "error_type": "HTTPException",
+            "request_id": req_id,
+            "path": request.url.path,
+        },
+    )
+
 
 # Global Structured JSON Error Handler (Prevents raw HTML 500s from reaching browser)
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global unhandled exception on {request.url.path}: {exc}", exc_info=True)
+    req_id = request_id_var.get()
+    logger.error("Global unhandled exception on %s: %s", request.url.path, exc, exc_info=True)
     return JSONResponse(
         status_code=500,
         content={
             "detail": str(exc),
+            "error_code": "PMGA_INTERNAL_ERROR",
             "error_type": exc.__class__.__name__,
-            "path": request.url.path
-        }
+            "request_id": req_id,
+            "path": request.url.path,
+        },
     )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,12 +111,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.middleware("http")
-async def add_cache_control_header(request: Request, call_next):
-    response = await call_next(request)
-    if request.url.path.startswith("/static") or request.url.path == "/":
-        response.headers["Cache-Control"] = "no-cache, must-revalidate"
-    return response
+async def correlation_and_cache_middleware(request: Request, call_next):
+    raw_req_id = request.headers.get("X-Request-ID") or ""
+    clean_req_id = re.sub(r"[^A-Za-z0-9_\-]", "", raw_req_id)[:48] or str(uuid.uuid4())[:12]
+    started = time.perf_counter()
+    with log_context(request_id=clean_req_id):
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - started) * 1000
+        response.headers["X-Request-ID"] = clean_req_id
+        if request.url.path.startswith("/static") or request.url.path in ("/", "/studio", "/research"):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        if not request.url.path.startswith("/static"):
+            logger.info(
+                "HTTP %s %s -> %s (%.2fms)",
+                request.method,
+                request.url.path,
+                response.status_code,
+                duration_ms,
+            )
+        return response
 
 # Health & LLM Status
 @app.get("/favicon.ico", include_in_schema=False)
@@ -1044,13 +1108,274 @@ def export_oscal_json(project_id: str):
     }
     return JSONResponse(content=oscal_doc)
 
+# ----------------------------------------------------------------------------
+# 13. PMGA v2 Multi-Session LangGraph Coach, Workspace & Bidirectional BPMN
+# ----------------------------------------------------------------------------
+class BPMNSyncV2Request(BaseModel):
+    bpmn_xml: str
+    extract_description: bool = True
+    provider: Optional[str] = None
+    model_name: Optional[str] = None
+    base_url: Optional[str] = None
+
+
+class GapStatusUpdateRequest(BaseModel):
+    status: str
+
+
+@app.get("/api/v1/projects/{project_id}/workspace")
+def get_v2_workspace(project_id: str):
+    from app.services.workspace_service import get_workspace_state
+
+    return get_workspace_state(project_id)
+
+
+@app.post("/api/v1/projects/{project_id}/turn")
+async def run_v2_turn(
+    project_id: str,
+    request: Request,
+    x_llm_api_key: Optional[str] = Header(None),
+    x_gemini_api_key: Optional[str] = Header(None),
+):
+    from app.services.workflow_graph import run_project_turn
+
+    key = x_llm_api_key or x_gemini_api_key
+    content_type = (request.headers.get("content-type") or "").lower()
+
+    input_kind = "chat"
+    payload: Dict[str, Any] = {}
+    language = "en"
+    active_process_id: Optional[str] = None
+    provider: Optional[str] = None
+    model_name: Optional[str] = None
+    base_url: Optional[str] = None
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        language = str(form.get("language") or "en")
+        active_process_id = str(form.get("active_process_id") or "") or None
+        provider = str(form.get("provider") or "") or None
+        model_name = str(form.get("model_name") or "") or None
+        base_url = str(form.get("base_url") or "") or None
+        doc_type = str(form.get("doc_type") or "FORMAL_POLICY")
+        msg_text = str(form.get("message") or "").strip()
+        file_obj = form.get("file")
+
+        if file_obj and hasattr(file_obj, "read"):
+            raw_bytes = await file_obj.read()
+            if len(raw_bytes) > settings.MAX_UPLOAD_BYTES:
+                raise PayloadTooLargeError(
+                    f"Uploaded file exceeds maximum limit of {settings.MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
+                )
+            safe_name = os.path.basename(getattr(file_obj, "filename", None) or "upload.bin")
+            ext = os.path.splitext(safe_name)[1].lower()
+            if ext in (".bpmn", ".xml"):
+                input_kind = "bpmn_edit"
+                payload = {
+                    "bpmn_xml": raw_bytes.decode("utf-8", errors="replace"),
+                    "filename": safe_name,
+                    "title": os.path.splitext(safe_name)[0],
+                    "process_id": active_process_id,
+                }
+            elif ext in (".xlsx", ".xlsm", ".xltx"):
+                save_path = os.path.join(settings.uploads_path, f"{uuid.uuid4()}_{safe_name}")
+                with open(save_path, "wb") as f:
+                    f.write(raw_bytes)
+                input_kind = "excel"
+                payload = {
+                    "file_path": save_path,
+                    "filename": safe_name,
+                    "doc_type": doc_type,
+                }
+            elif ext in (".pdf", ".docx", ".doc", ".csv", ".txt", ".md", ".markdown", ".json", ".yaml", ".yml"):
+                save_path = os.path.join(settings.uploads_path, f"{uuid.uuid4()}_{safe_name}")
+                with open(save_path, "wb") as f:
+                    f.write(raw_bytes)
+                try:
+                    extracted = DocumentService.extract_text_from_file(save_path, safe_name)
+                except Exception as exc:
+                    try:
+                        os.remove(save_path)
+                    except OSError:
+                        pass
+                    raise ValidationError(f"Could not extract readable text from '{safe_name}': {exc}") from exc
+                input_kind = "document"
+                payload = {
+                    "file_path": save_path,
+                    "filename": safe_name,
+                    "doc_type": doc_type,
+                    "extracted_text": extracted,
+                }
+            else:
+                raise UnsupportedMediaError(
+                    f"Unsupported file format '{ext}'. Upload .xlsx, .pdf, .docx, .csv, .txt, .md, .json, .yaml, or .bpmn."
+                )
+        elif msg_text:
+            input_kind = str(form.get("input_kind") or "chat")
+            payload = {"message": msg_text}
+        else:
+            raise ValidationError("Provide either a message or an uploaded file.")
+    else:
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise ValidationError("Request body must be valid JSON or multipart/form-data.") from exc
+        if not isinstance(body, dict):
+            raise ValidationError("JSON turn body must be an object.")
+        input_kind = str(body.get("input_kind") or "chat")
+        language = str(body.get("language") or "en")
+        active_process_id = body.get("active_process_id") or body.get("process_id")
+        provider = body.get("provider")
+        model_name = body.get("model_name")
+        base_url = body.get("base_url")
+        if input_kind == "bpmn_edit":
+            payload = {
+                "bpmn_xml": body.get("bpmn_xml") or "",
+                "title": body.get("title") or "Process Model",
+                "process_id": active_process_id,
+            }
+        elif input_kind == "document":
+            payload = {
+                "filename": body.get("filename") or "notes.md",
+                "doc_type": body.get("doc_type") or "FORMAL_POLICY",
+                "extracted_text": body.get("text") or body.get("message") or "",
+            }
+        else:
+            payload = {"message": body.get("message") or ""}
+
+    return run_project_turn(
+        project_id,
+        input_kind=input_kind,
+        payload=payload,
+        language=language,
+        active_process_id=active_process_id,
+        api_key=key,
+        provider=provider,
+        model_name=model_name,
+        base_url=base_url,
+    )
+
+
+@app.put("/api/v1/projects/{project_id}/processes/{process_id}/bpmn")
+def sync_v2_process_bpmn(
+    project_id: str,
+    process_id: str,
+    req: BPMNSyncV2Request,
+    x_llm_api_key: Optional[str] = Header(None),
+    x_gemini_api_key: Optional[str] = Header(None),
+):
+    from app.services.workspace_service import sync_bpmn_canvas_to_project
+
+    key = x_llm_api_key or x_gemini_api_key
+    return sync_bpmn_canvas_to_project(
+        project_id,
+        process_id,
+        req.bpmn_xml,
+        extract_description=req.extract_description,
+        api_key=key,
+        provider=req.provider,
+        model_name=req.model_name,
+        base_url=req.base_url,
+    )
+
+
+@app.patch("/api/v1/projects/{project_id}/gaps/{gap_id}")
+def update_v2_gap_status(project_id: str, gap_id: str, req: GapStatusUpdateRequest):
+    from app.services.workspace_service import update_gap_status
+
+    return update_gap_status(project_id, gap_id, req.status)
+
+
+class BrandProfileRequest(BaseModel):
+    org_name: Optional[str] = None
+    logo_data_uri: Optional[str] = None
+    primary_color: Optional[str] = None
+    accent_color: Optional[str] = None
+    font_family: Optional[str] = None
+    footer_text: Optional[str] = None
+    clear_logo: bool = False
+
+
+@app.post("/api/v1/projects/{project_id}/brand")
+def save_v2_brand_profile(project_id: str, req: BrandProfileRequest):
+    from app.services.deliverable_service import save_brand_profile
+
+    return save_brand_profile(
+        project_id,
+        org_name=req.org_name,
+        logo_data_uri=req.logo_data_uri,
+        primary_color=req.primary_color,
+        accent_color=req.accent_color,
+        font_family=req.font_family,
+        footer_text=req.footer_text,
+        clear_logo=req.clear_logo,
+    )
+
+
+@app.get("/api/v1/projects/{project_id}/deliverables/{doc_type}")
+def get_v2_deliverable(
+    project_id: str,
+    doc_type: str,
+    format: str = Query("html"),
+    process_id: Optional[str] = Query(None),
+):
+    from fastapi.responses import HTMLResponse
+    from app.services.deliverable_service import (
+        VALID_DOC_TYPES,
+        VALID_FORMATS,
+        export_deliverable_bpmn,
+        export_deliverable_xlsx,
+        render_deliverable_html,
+        render_deliverable_pdf,
+    )
+
+    fmt = (format or "html").strip().lower()
+    if doc_type not in VALID_DOC_TYPES:
+        raise ValidationError(f"Unknown deliverable '{doc_type}'. Choose one of {VALID_DOC_TYPES}.")
+    if fmt not in VALID_FORMATS:
+        raise ValidationError(f"Unsupported format '{format}'. Choose one of {VALID_FORMATS}.")
+
+    if fmt == "html":
+        html = render_deliverable_html(project_id, doc_type)
+        return HTMLResponse(content=html)
+    if fmt == "pdf":
+        pdf_bytes = render_deliverable_pdf(project_id, doc_type)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="PMGA_{doc_type}_{project_id[:8]}.pdf"'},
+        )
+    if fmt == "xlsx":
+        out_path = export_deliverable_xlsx(project_id)
+        return FileResponse(
+            out_path,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=os.path.basename(out_path),
+        )
+    filename, xml = export_deliverable_bpmn(project_id, process_id=process_id)
+    return Response(
+        content=xml,
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # Static Assets
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 @app.get("/")
 def get_landing():
     return FileResponse("static/landing.html")
 
+
 @app.get("/studio")
 def get_studio():
     return FileResponse("static/index.html")
+
+
+@app.get("/research")
+def get_research():
+    target = "static/research.html" if os.path.exists("static/research.html") else "static/index.html"
+    return FileResponse(target)
+
