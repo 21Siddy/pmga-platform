@@ -26,6 +26,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     APP_HOST=0.0.0.0 \
     APP_PORT=8000
 
+# Native Pango/Cairo libraries for WeasyPrint PDF deliverables (~40MB delta)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libpangoft2-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    shared-mime-info \
+    fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create non-privileged system user
 RUN groupadd -g 1001 pmgagroup && \
     useradd -u 1001 -g pmgagroup -m -s /bin/bash pmgauser

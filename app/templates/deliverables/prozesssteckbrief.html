@@ -1,0 +1,85 @@
+{% extends "base_document.html" %}
+{% block content %}
+<div class="card">
+  <h3>FIM-Aligned Process Profile (Prozesssteckbrief)</h3>
+  <p>
+    Structured municipal profile per business process capturing triggers, executing roles (Ausführende Stellen),
+    supporting IT systems, input/output data assets, workflow sequence, protection needs (BSI 200-2 CIA), and
+    business continuity targets (BSI 200-4 RTO/MTPD).
+  </p>
+</div>
+
+{% if not process_profiles %}
+<div class="card">
+  <p>No business processes have been modeled yet. Start a discovery conversation, upload an Excel sheet, or upload a .bpmn diagram to populate process profiles.</p>
+</div>
+{% endif %}
+
+{% for prof in process_profiles %}
+<h2>{{ loop.index }}. {{ prof.title }}</h2>
+<table>
+  <tbody>
+    <tr><th style="width: 26%;">Process Name</th><td>{{ prof.title }}</td></tr>
+    <tr><th>Owner / Executing Role</th><td>{{ prof.owner_role or "Not yet assigned" }}</td></tr>
+    <tr><th>Trigger Event</th><td>{{ prof.trigger or "Citizen / internal request" }}</td></tr>
+    <tr><th>Actors / Swimlanes</th><td>{{ prof.actors|join(", ") if prof.actors else "Pending assignment" }}</td></tr>
+    <tr><th>Supporting IT Systems</th><td>{{ prof.systems|join(", ") if prof.systems else "Manual / none linked" }}</td></tr>
+    <tr><th>Data Objects &amp; Stores</th><td>{{ prof.data_assets|join(", ") if prof.data_assets else "Not yet documented" }}</td></tr>
+    <tr>
+      <th>Protection Need (CIA)</th>
+      <td>
+        Confidentiality: <strong>{{ prof.protection.confidentiality or "Unset" }}</strong> &bull;
+        Integrity: <strong>{{ prof.protection.integrity or "Unset" }}</strong> &bull;
+        Availability: <strong>{{ prof.protection.availability or "Unset" }}</strong>
+      </td>
+    </tr>
+    <tr>
+      <th>Continuity Targets (BIA)</th>
+      <td>
+        RTO: <strong>{{ (prof.protection.rto ~ " h") if prof.protection.rto is not none else "Unset" }}</strong> &bull;
+        MTPD: <strong>{{ (prof.protection.mtpd ~ " h") if prof.protection.mtpd is not none else "Unset" }}</strong>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+{% if prof.description %}
+<div class="card">
+  <h3>Operational Flow Summary</h3>
+  <p>{{ prof.description }}</p>
+</div>
+{% endif %}
+
+{% if prof.steps %}
+<table>
+  <thead>
+    <tr>
+      <th style="width: 14%;">Step ID</th>
+      <th style="width: 34%;">Activity / Gateway</th>
+      <th style="width: 22%;">Actor / Lane</th>
+      <th style="width: 18%;">Linked System</th>
+      <th style="width: 12%;">Open Gaps</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in prof.steps %}
+    <tr>
+      <td><code>{{ s.id }}</code></td>
+      <td>{{ s.name }}</td>
+      <td>{{ s.lane }}</td>
+      <td>{{ s.system_name or "—" }}</td>
+      <td>{{ s.gap_ids|length }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if prof.svg %}
+<div class="diagram-box">
+  <h3>FIM-BPMN 2.0 Diagram</h3>
+  {{ prof.svg | safe }}
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ doc_title }} — {{ project.title }}</title>
+  <style>
+    :root {
+      --brand-primary: {{ brand.primary_color }};
+      --brand-accent: {{ brand.accent_color }};
+      --brand-font: '{{ brand.font_family }}', 'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif;
+      --ink-main: #1E293B;
+      --ink-muted: #526075;
+      --surface: #FFFFFF;
+      --surface-warm: #FAF8F4;
+      --border-light: #E2DDD5;
+    }
+
+    @page {
+      size: A4;
+      margin: 18mm 15mm 18mm 15mm;
+      @top-left {
+        content: "{{ brand.org_name }}";
+        font-family: var(--brand-font);
+        font-size: 8.5pt;
+        color: #64748B;
+      }
+      @top-right {
+        content: "{{ doc_title }}";
+        font-family: var(--brand-font);
+        font-size: 8.5pt;
+        color: #64748B;
+      }
+      @bottom-left {
+        content: "{{ brand.footer_text or 'PMGA Workbench' }}";
+        font-family: var(--brand-font);
+        font-size: 8pt;
+        color: #64748B;
+      }
+      @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font-family: var(--brand-font);
+        font-size: 8pt;
+        color: #64748B;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: var(--brand-font);
+      color: var(--ink-main);
+      background: #F4F1EA;
+      margin: 0;
+      padding: 24px;
+      line-height: 1.5;
+      font-size: 10.5pt;
+    }
+
+    .print-toolbar {
+      max-width: 900px;
+      margin: 0 auto 14px auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #FFFFFF;
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      padding: 10px 16px;
+    }
+
+    .print-btn {
+      background: var(--brand-primary);
+      color: #FFFFFF;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 9.5pt;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .doc-sheet {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      padding: 32px 36px;
+      box-shadow: 0 4px 20px rgba(30, 41, 59, 0.06);
+    }
+
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid var(--brand-primary);
+      padding-bottom: 16px;
+      margin-bottom: 22px;
+      gap: 16px;
+    }
+
+    .doc-kicker {
+      font-size: 8.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--brand-accent);
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .doc-header h1 {
+      margin: 0 0 6px 0;
+      font-size: 19pt;
+      color: var(--brand-primary);
+      line-height: 1.2;
+    }
+
+    .doc-meta {
+      font-size: 9pt;
+      color: var(--ink-muted);
+    }
+
+    .brand-logo {
+      max-height: 54px;
+      max-width: 170px;
+      object-fit: contain;
+    }
+
+    h2 {
+      font-size: 13.5pt;
+      color: var(--brand-primary);
+      border-bottom: 1px solid var(--border-light);
+      padding-bottom: 5px;
+      margin: 22px 0 12px 0;
+    }
+
+    h3 {
+      font-size: 11pt;
+      color: var(--ink-main);
+      margin: 14px 0 6px 0;
+    }
+
+    .kpi-row {
+      display: flex;
+      gap: 12px;
+      margin: 14px 0 20px 0;
+    }
+
+    .kpi-box {
+      flex: 1;
+      background: var(--surface-warm);
+      border: 1px solid var(--border-light);
+      border-left: 4px solid var(--brand-primary);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .kpi-box .num {
+      font-size: 16pt;
+      font-weight: 700;
+      color: var(--brand-primary);
+    }
+
+    .kpi-box .lbl {
+      font-size: 8.5pt;
+      color: var(--ink-muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 18px 0;
+      font-size: 9.5pt;
+    }
+
+    th {
+      background: var(--brand-primary);
+      color: #FFFFFF;
+      text-align: left;
+      padding: 8px 10px;
+      font-weight: 600;
+    }
+
+    td {
+      border-bottom: 1px solid var(--border-light);
+      padding: 8px 10px;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td {
+      background: #FCFBF8;
+    }
+
+    .card {
+      background: var(--surface-warm);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 13px 15px;
+      margin-bottom: 12px;
+      page-break-inside: avoid;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 8pt;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .badge-critical { background: #FEE2E2; color: #991B1B; }
+    .badge-high { background: #FFEDD5; color: #9A3412; }
+    .badge-moderate { background: #FEF3C7; color: #92400E; }
+    .badge-info { background: #E0F2FE; color: #075985; }
+    .badge-clause { background: #E2E8F0; color: #1E293B; }
+
+    .diagram-box {
+      background: #FFFFFF;
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 12px;
+      margin: 12px 0 18px 0;
+      page-break-inside: avoid;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .doc-footer {
+      margin-top: 28px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-light);
+      font-size: 8.5pt;
+      color: var(--ink-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    @media print {
+      body { background: #FFFFFF; padding: 0; }
+      .print-toolbar { display: none !important; }
+      .doc-sheet { border: none; box-shadow: none; padding: 0; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <span><strong>{{ brand.org_name }}</strong> &mdash; {{ doc_title }}</span>
+    <button type="button" class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+  <div class="doc-sheet">
+    <header class="doc-header">
+      <div>
+        <div class="doc-kicker">{{ brand.org_name }}</div>
+        <h1>{{ doc_title }}</h1>
+        <div class="doc-meta">
+          Assessment: <strong>{{ project.title }}</strong> &bull;
+          Generated: {{ generated_at }} &bull;
+          Processes: {{ process_models|length }} &bull;
+          Entities: {{ structure.total_entities }}
+        </div>
+      </div>
+      {% if brand.logo_data_uri %}
+      <img src="{{ brand.logo_data_uri }}" alt="{{ brand.org_name }} logo" class="brand-logo" />
+      {% endif %}
+    </header>
+
+    {% block content %}{% endblock %}
+
+    <footer class="doc-footer">
+      <span>{{ brand.footer_text or 'Prepared with PMGA Resilience & Process Workbench' }}</span>
+      <span>BSI 200-2 / 200-4 &bull; ISO/IEC 27002:2022 &bull; FIM-BPMN 2.0</span>
+    </footer>
+  </div>
+</body>
+</html>

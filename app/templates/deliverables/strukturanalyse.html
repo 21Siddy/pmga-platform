@@ -1,0 +1,120 @@
+{% extends "base_document.html" %}
+{% block content %}
+<div class="card">
+  <h3>BSI Standard 200-2 — Strukturanalyse &amp; Schutzbedarfsfeststellung</h3>
+  <p>
+    Complete structural inventory and automated <em>Maximumprinzip</em> protection inheritance across discovered
+    business processes, IT applications/systems, data assets, and roles, accompanied by verbatim provenance citations.
+  </p>
+</div>
+
+<h2>1. Entity Inventory &amp; Protection Needs</h2>
+{% if not structure.entities %}
+<p style="color: #526075;">No entities recorded yet.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Name</th>
+      <th>Owner Role</th>
+      <th>Declared (C / I / A)</th>
+      <th>Inherited Maximumprinzip</th>
+      <th>BIA (RTO / MTPD)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in structure.entities %}
+    <tr>
+      <td><span class="badge badge-clause">{{ e.entity_type }}</span></td>
+      <td><strong>{{ e.name }}</strong></td>
+      <td>{{ e.owner_role or "—" }}</td>
+      <td>
+        {{ e.declared_protection.confidentiality or "—" }} /
+        {{ e.declared_protection.integrity or "—" }} /
+        {{ e.declared_protection.availability or "—" }}
+      </td>
+      <td>
+        {% if e.inherited_protection %}
+        <strong>
+          {{ e.inherited_protection.confidentiality or "—" }} /
+          {{ e.inherited_protection.integrity or "—" }} /
+          {{ e.inherited_protection.availability or "—" }}
+        </strong>
+        <br><span style="font-size: 8.5pt; color: #526075;">From: {{ e.inherited_protection.from_processes|join(", ") }}</span>
+        {% else %}
+        —
+        {% endif %}
+      </td>
+      <td>
+        {% set rto = (e.inherited_protection.rto if e.inherited_protection and e.inherited_protection.rto is not none else e.declared_protection.rto) %}
+        {% set mtpd = (e.inherited_protection.mtpd if e.inherited_protection and e.inherited_protection.mtpd is not none else e.declared_protection.mtpd) %}
+        RTO: {{ (rto ~ "h") if rto is not none else "—" }} /
+        MTPD: {{ (mtpd ~ "h") if mtpd is not none else "—" }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>2. Structural Dependencies</h2>
+{% if not named_dependencies %}
+<p style="color: #526075;">No entity dependencies recorded yet.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Source Entity</th>
+      <th>Relationship</th>
+      <th>Target Entity</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in named_dependencies %}
+    <tr>
+      <td>{{ d.from_name }}</td>
+      <td><code>{{ d.dependency_type }}</code></td>
+      <td>{{ d.to_name }}</td>
+      <td>{{ d.notes or "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>3. Provenance &amp; Evidence Ledger</h2>
+{% if not evidence_items %}
+<p style="color: #526075;">No document provenance citations recorded yet.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>Req ID</th>
+      <th>Status</th>
+      <th>Claim</th>
+      <th>Verbatim Quote &amp; Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ev in evidence_items %}
+    <tr>
+      <td><code>{{ ev.req_id or "—" }}</code></td>
+      <td>
+        {% if ev.status == "CONTRADICTED" %}
+        <span class="badge badge-critical">CONTRADICTED</span>
+        {% elif ev.status == "USER_CONFIRMED" %}
+        <span class="badge badge-info">USER CONFIRMED</span>
+        {% else %}
+        <span class="badge badge-moderate">DOCUMENT CLAIM</span>
+        {% endif %}
+      </td>
+      <td>{{ ev.claim_text }}</td>
+      <td>"{{ ev.source_quote }}" <br><span style="font-size: 8.5pt; color: #526075;">{{ ev.source_location or "Uploaded file" }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

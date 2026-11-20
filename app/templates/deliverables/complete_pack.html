@@ -1,0 +1,57 @@
+{% extends "base_document.html" %}
+{% block content %}
+<div class="card">
+  <h3>Complete Municipal Resilience &amp; Process Pack</h3>
+  <p>Combined executive bundle containing the FIM-aligned Prozesssteckbriefe, BSI 200-2 Strukturanalyse &amp; Protection Inheritance, and prioritized BSI/ISO Remediation Plan.</p>
+</div>
+
+<h2>Part I — Remediation Plan</h2>
+{% for bucket_key, bucket_label in [("QUICK_WIN", "Quick Wins"), ("BEFORE_DIGITALIZATION", "Before Digitalization"), ("ONGOING", "Ongoing Hygiene")] %}
+<h3>{{ bucket_label }} ({{ grouped_gaps[bucket_key]|length }})</h3>
+{% for gap in grouped_gaps[bucket_key] %}
+<div class="card">
+  <span class="badge badge-{{ gap.severity|lower }}">{{ gap.severity }}</span>
+  <span class="badge badge-clause">{{ gap.standard_clause }}</span>
+  <p style="margin: 6px 0 4px 0;"><strong>{{ gap.warm_summary }}</strong></p>
+  {% if gap.action_steps %}
+  <ul style="margin: 4px 0 0 18px;">
+    {% for st in gap.action_steps %}<li>{{ st }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endfor %}
+{% endfor %}
+
+<div class="page-break"></div>
+<h2>Part II — Prozesssteckbriefe (FIM-BPMN 2.0)</h2>
+{% for prof in process_profiles %}
+<h3>{{ loop.index }}. {{ prof.title }}</h3>
+<table>
+  <tbody>
+    <tr><th style="width: 26%;">Owner</th><td>{{ prof.owner_role or "Unassigned" }}</td></tr>
+    <tr><th>Systems</th><td>{{ prof.systems|join(", ") if prof.systems else "Manual" }}</td></tr>
+    <tr><th>Data Assets</th><td>{{ prof.data_assets|join(", ") if prof.data_assets else "None recorded" }}</td></tr>
+    <tr><th>CIA / BIA</th><td>C:{{ prof.protection.confidentiality or "—" }} / I:{{ prof.protection.integrity or "—" }} / A:{{ prof.protection.availability or "—" }} | RTO:{{ prof.protection.rto if prof.protection.rto is not none else "—" }}h / MTPD:{{ prof.protection.mtpd if prof.protection.mtpd is not none else "—" }}h</td></tr>
+  </tbody>
+</table>
+{% if prof.svg %}<div class="diagram-box">{{ prof.svg | safe }}</div>{% endif %}
+{% endfor %}
+
+<div class="page-break"></div>
+<h2>Part III — BSI 200-2 Strukturanalyse</h2>
+<table>
+  <thead>
+    <tr><th>Type</th><th>Name</th><th>Declared CIA</th><th>Inherited Maximumprinzip</th></tr>
+  </thead>
+  <tbody>
+    {% for e in structure.entities %}
+    <tr>
+      <td>{{ e.entity_type }}</td>
+      <td><strong>{{ e.name }}</strong></td>
+      <td>{{ e.declared_protection.confidentiality or "—" }} / {{ e.declared_protection.integrity or "—" }} / {{ e.declared_protection.availability or "—" }}</td>
+      <td>{% if e.inherited_protection %}{{ e.inherited_protection.confidentiality or "—" }} / {{ e.inherited_protection.integrity or "—" }} / {{ e.inherited_protection.availability or "—" }} ({{ e.inherited_protection.from_processes|join(", ") }}){% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
