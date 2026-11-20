@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     LLM_MIN_INTERVAL_SEC: float = 4.0
     LLM_MAX_RETRIES: int = 4
 
+    # Logging & Limits
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "text"
+    MAX_UPLOAD_BYTES: int = 20 * 1024 * 1024
+
     # Storage Paths
     STORAGE_DIR: str = "storage"
     DATA_DIR: str = "data"
@@ -64,5 +69,15 @@ class Settings(BaseSettings):
         os.makedirs(self.STORAGE_DIR, exist_ok=True)
         return os.path.join(self.STORAGE_DIR, "pmga.db")
 
+    @property
+    def checkpoint_db_path(self) -> str:
+        os.makedirs(self.STORAGE_DIR, exist_ok=True)
+        return os.path.join(self.STORAGE_DIR, "pmga_checkpoints.db")
+
+    @property
+    def decision_models_path(self) -> str:
+        return os.path.join(self.DATA_DIR, "decision_models")
+
 
 settings = Settings()
+
