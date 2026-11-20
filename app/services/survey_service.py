@@ -142,24 +142,38 @@ APP_KEYWORDS = ("system", "software", "portal", "server", "datenbank", "database
 
 class SurveyService:
     @staticmethod
-    def classify_entry_kind(entry_text: str) -> str:
+    def classify_entry_kind(entry_text: str, explicit_kind: Optional[str] = None, raw_criticality: str = "") -> str:
         """
-        Deterministically classifies if an entry is an APPLICATION, PROCESS, or CATEGORY.
-        Zero LLM latency.
+        Deterministically classifies an entry via the 01_entry_classifier JDM table.
+        Maps SYSTEM -> APPLICATION for process_survey_rows.q02_entry_kind compatibility.
         """
-        low = entry_text.lower().strip()
-        # Ends with system/software/tool or contains explicit application keywords without action verbs
-        has_app_word = any(k in low for k in APP_KEYWORDS)
-        # German or English infinitive action verbs
-        has_action_verb = bool(re.search(r'\b(erfassen|prüfen|freigeben|genehmigen|versenden|archivieren|bearbeiten|buchen|check|process|approve|send|archive|verify)\b', low))
+        from app.services.decision_engine import DecisionEngine
 
-        if has_app_word and not has_action_verb:
-            return "APPLICATION"
-        if has_action_verb:
-            return "PROCESS"
-        if len(low.split()) <= 2 and not has_action_verb:
+        low = (entry_text or "").lower().strip()
+        has_app_word = any(k in low for k in APP_KEYWORDS)
+        has_action_verb = bool(
+            re.search(
+                r"\b(erfassen|prüfen|freigeben|genehmigen|versenden|archivieren|bearbeiten|buchen|check|process|approve|send|archive|verify|beantragen|ausstellen|einlösen|abrechnen)\b",
+                low,
+            )
+        )
+        word_count = len([w for w in low.split() if w])
+
+        results = DecisionEngine.evaluate(
+            "01_entry_classifier",
+            {
+                "explicit_kind_col": (explicit_kind or "").strip(),
+                "has_app_keyword": has_app_word,
+                "has_action_verb": has_action_verb,
+                "word_count": word_count,
+                "raw_criticality": (raw_criticality or "").strip(),
+            },
+        )
+        entity_type = (results[0].get("entity_type") if results else "PROCESS") or "PROCESS"
+        if entity_type == "SYSTEM":
             return "APPLICATION"
         return "PROCESS"
+
 
     @staticmethod
     def ingest_rows_into_survey(project_id: str, items: List[Dict[str, Any]]) -> List[str]:

@@ -1,0 +1,126 @@
+{
+  "contentType": "application/vnd.gorules.decision",
+  "name": "04_gap_severity_and_signal",
+  "description": "Determines remediation severity, priority bucket, and supportive warm-tone framing for every gap.",
+  "nodes": [
+    {
+      "id": "dt_gap_severity",
+      "type": "decisionTableNode",
+      "name": "Gap Severity & Warm Signal",
+      "content": {
+        "hitPolicy": "first",
+        "inputs": [
+          { "id": "in_rule_status", "name": "Rule Status", "field": "rule_status", "type": "expression" },
+          { "id": "in_cia_max", "name": "Inherited CIA Max", "field": "inherited_cia_max", "type": "expression" },
+          { "id": "in_rto_viol", "name": "RTO Violation", "field": "rto_violation", "type": "expression" },
+          { "id": "in_contradicted", "name": "Policy Contradicted", "field": "policy_contradicted", "type": "expression" },
+          { "id": "in_ev_status", "name": "Evidence Status", "field": "evidence_status", "type": "expression" }
+        ],
+        "outputs": [
+          { "id": "out_severity", "name": "Severity", "field": "severity", "type": "expression" },
+          { "id": "out_bucket", "name": "Priority Bucket", "field": "priority_bucket", "type": "expression" },
+          { "id": "out_tone", "name": "Warm Tone Framing", "field": "warm_tone_framing", "type": "expression" }
+        ],
+        "rules": [
+          {
+            "_id": "gs_rto_violation",
+            "_description": "RTO >= MTPD is always critical before digitalization",
+            "in_rule_status": "",
+            "in_cia_max": "",
+            "in_rto_viol": "true",
+            "in_contradicted": "",
+            "in_ev_status": "",
+            "out_severity": "\"CRITICAL\"",
+            "out_bucket": "\"BEFORE_DIGITALIZATION\"",
+            "out_tone": "\"Your planned recovery time equals or exceeds the longest outage your team can absorb—let's put a practical manual fallback or faster restore path in place first.\""
+          },
+          {
+            "_id": "gs_policy_contradicted_high",
+            "_description": "Contradicted safeguard on High/Very High protection asset",
+            "in_rule_status": "",
+            "in_cia_max": "\"High\", \"Very High\"",
+            "in_rto_viol": "",
+            "in_contradicted": "true",
+            "in_ev_status": "",
+            "out_severity": "\"CRITICAL\"",
+            "out_bucket": "\"QUICK_WIN\"",
+            "out_tone": "\"Your policy document already calls for this safeguard, while daily reality or recent notes show it isn't enforced yet—closing this gap protects high-value operations quickly.\""
+          },
+          {
+            "_id": "gs_policy_contradicted_normal",
+            "_description": "Contradicted safeguard on Normal protection asset",
+            "in_rule_status": "",
+            "in_cia_max": "",
+            "in_rto_viol": "",
+            "in_contradicted": "true",
+            "in_ev_status": "",
+            "out_severity": "\"HIGH\"",
+            "out_bucket": "\"QUICK_WIN\"",
+            "out_tone": "\"Written guidance and day-to-day reality differ here; a small operational adjustment or policy clarification aligns both cleanly.\""
+          },
+          {
+            "_id": "gs_critical_very_high",
+            "_description": "Critical rule gap with Very High CIA inheritance",
+            "in_rule_status": "\"CRITICAL_GAP\"",
+            "in_cia_max": "\"Very High\"",
+            "in_rto_viol": "",
+            "in_contradicted": "",
+            "in_ev_status": "",
+            "out_severity": "\"CRITICAL\"",
+            "out_bucket": "\"BEFORE_DIGITALIZATION\"",
+            "out_tone": "\"This dependency carries a Very High protection need—let's resolve ownership and core safeguards before expanding digital interfaces.\""
+          },
+          {
+            "_id": "gs_critical_default",
+            "_description": "Critical rule gap on Normal/High/unknown asset",
+            "in_rule_status": "\"CRITICAL_GAP\"",
+            "in_cia_max": "",
+            "in_rto_viol": "",
+            "in_contradicted": "",
+            "in_ev_status": "",
+            "out_severity": "\"HIGH\"",
+            "out_bucket": "\"BEFORE_DIGITALIZATION\"",
+            "out_tone": "\"An essential control or structural link is still missing—here is a practical, step-by-step way to address it with your team.\""
+          },
+          {
+            "_id": "gs_partial_or_doc_claim",
+            "_description": "Partial gap or unconfirmed document claim",
+            "in_rule_status": "\"PARTIAL_GAP\", \"NEEDS_USER_INPUT\"",
+            "in_cia_max": "",
+            "in_rto_viol": "",
+            "in_contradicted": "",
+            "in_ev_status": "",
+            "out_severity": "\"MODERATE\"",
+            "out_bucket": "\"ONGOING\"",
+            "out_tone": "\"You have partial coverage or a written claim—confirming how it works in day-to-day practice will make your baseline audit-ready.\""
+          },
+          {
+            "_id": "gs_doc_claim_only",
+            "_description": "Document claim not yet confirmed by lived reality",
+            "in_rule_status": "",
+            "in_cia_max": "",
+            "in_rto_viol": "",
+            "in_contradicted": "",
+            "in_ev_status": "\"DOCUMENT_CLAIM\"",
+            "out_severity": "\"MODERATE\"",
+            "out_bucket": "\"ONGOING\"",
+            "out_tone": "\"A document mentions this safeguard, so we logged it as a claim—take a moment during review to confirm staff actually use it.\""
+          },
+          {
+            "_id": "gs_default_info",
+            "_description": "Compliant / healthy safeguard",
+            "in_rule_status": "",
+            "in_cia_max": "",
+            "in_rto_viol": "",
+            "in_contradicted": "",
+            "in_ev_status": "",
+            "out_severity": "\"INFO\"",
+            "out_bucket": "\"ONGOING\"",
+            "out_tone": "\"This area is in good shape—keep reviewing it periodically as part of normal operations.\""
+          }
+        ]
+      }
+    }
+  ],
+  "edges": []
+}

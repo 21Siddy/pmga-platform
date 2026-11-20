@@ -1,16 +1,40 @@
-import sqlite3
-import json
-from contextlib import contextmanager
-from app.config import settings
+"""Unified SQLite persistence layer for PMGA v2.
 
-def get_connection():
-    conn = sqlite3.connect(settings.db_path, timeout=30.0)
-    conn.row_factory = sqlite3.Row
-    # Enable Write-Ahead Logging and busy timeout for safe concurrent access
-    conn.execute("PRAGMA busy_timeout = 30000;")
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA foreign_keys=ON;")
-    return conn
+Consolidates legacy tables (for full backwards compatibility) alongside the
+v2 single-source-of-truth project graph:
+- process_models: multi-process BPMN IR + XML + narrative per entity/project
+- session_turns: durable multi-session conversation history
+- evidence_items: quote-backed provenance ledger (DOCUMENT_CLAIM / USER_CONFIRMED / CONTRADICTED)
+- remediation_gaps: BSI/ISO gaps bound to specific BPMN node IDs and action steps
+- brand_profiles: customizable logo/colors/font/footer for Jinja2 & WeasyPrint exports
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import sqlite3
+from contextlib import contextmanager
+from typing import Any, Dict
+
+from app.config import settings
+from app.errors import PersistenceError
+
+logger = logging.getLogger(__name__)
+
+
+def get_connection() -> sqlite3.Connection:
+    try:
+        conn = sqlite3.connect(settings.db_path, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 30000;")
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA foreign_keys=ON;")
+        return conn
+    except sqlite3.Error as exc:
+        logger.error("Failed to open SQLite connection at %s: %s", settings.db_path, exc, exc_info=True)
+        raise PersistenceError(f"Database connection failed: {exc}") from exc
+
 
 @contextmanager
 def get_db():
@@ -18,14 +42,28 @@ def get_db():
     try:
         yield conn
         conn.commit()
-    except Exception:
-        conn.rollback()
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except sqlite3.Error as rb_exc:
+            logger.error("SQLite rollback failed: %s", rb_exc)
+        if isinstance(exc, sqlite3.Error):
+            logger.error("SQLite transaction error: %s", exc, exc_info=True)
         raise
     finally:
         conn.close()
 
-def init_db():
-    """Initializes tables for assessment projects, documents, BPMN models, and gap analysis results."""
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_ddl: str) -> None:
+    """Non-destructive migration guard: adds a column if an older DB lacks it."""
+    cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column_ddl}")
+        logger.info("Migrated table %s: added missing column %s", table, column)
+
+
+def init_db() -> None:
+    """Initializes legacy and v2 unified tables, indexes, and migration guards."""
     with get_db() as conn:
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS projects (
@@ -87,29 +125,24 @@ def init_db():
             project_id TEXT NOT NULL,
             sheet_name TEXT DEFAULT 'General',
             row_order INTEGER DEFAULT 1,
-            -- Group 1: Scope & Strukturanalyse (Process vs. Application)
-            q01_raw_entry TEXT NOT NULL,           -- Verbatim cell, e.g. 'Gutscheinsystem'
-            q02_entry_kind TEXT DEFAULT 'UNKNOWN', -- 'PROCESS', 'APPLICATION', 'CATEGORY'
-            q03_process_name TEXT,                 -- Actual business process if q02 is APPLICATION
-            q04_owner_role TEXT,                   -- Responsible department / role
-            -- Group 2: Trigger & Handbook vs. Lived Reality
-            q05_trigger_event TEXT,                -- How the process starts
-            q06_in_handbook TEXT,                  -- 'YES', 'NO', 'PARTIAL'
-            q07_lived_reality_notes TEXT,          -- Verbatim day-to-day process steps
-            -- Group 3: Data Assets & Storage (VVT)
-            q08_input_data_mandatory TEXT,         -- Data required to start/complete
-            q09_input_data_optional TEXT,          -- Data that can be missing while process still completes
-            q10_output_data TEXT,                  -- Data produced at the end
-            q11_storage_location TEXT,             -- Where data is stored (system, DB, share, paper)
-            -- Group 4: Exceptions & Repeatability
-            q12_exception_path TEXT,               -- What happens if data is missing or rejected
-            q13_is_repeatable INTEGER DEFAULT 0,   -- 1 if activities can repeat with different outcomes
-            -- Group 5: Criticality (BSI 200-2 CIA & BSI 200-4 BIA)
-            q14_raw_criticality TEXT,              -- Verbatim label from Excel, e.g. 'kritisch'
-            q15_cia_confidentiality TEXT,          -- 'Normal', 'High', 'Very High' + reason
-            q16_cia_integrity TEXT,                -- 'Normal', 'High', 'Very High' + reason
-            q17_cia_availability TEXT,             -- 'Normal', 'High', 'Very High' + reason
-            q18_bia_mtpd_rto TEXT,                 -- Max tolerable downtime (MTPD) & target recovery (RTO)
+            q01_raw_entry TEXT NOT NULL,
+            q02_entry_kind TEXT DEFAULT 'UNKNOWN',
+            q03_process_name TEXT,
+            q04_owner_role TEXT,
+            q05_trigger_event TEXT,
+            q06_in_handbook TEXT,
+            q07_lived_reality_notes TEXT,
+            q08_input_data_mandatory TEXT,
+            q09_input_data_optional TEXT,
+            q10_output_data TEXT,
+            q11_storage_location TEXT,
+            q12_exception_path TEXT,
+            q13_is_repeatable INTEGER DEFAULT 0,
+            q14_raw_criticality TEXT,
+            q15_cia_confidentiality TEXT,
+            q16_cia_integrity TEXT,
+            q17_cia_availability TEXT,
+            q18_bia_mtpd_rto TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -118,10 +151,10 @@ def init_db():
         CREATE TABLE IF NOT EXISTS accepted_concepts (
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
-            concept_type TEXT NOT NULL, -- 'SYSTEM', 'DATA_ASSET', 'ROLE', 'TRIGGER'
-            source_text TEXT NOT NULL,  -- Original verbatim text from participant
-            label TEXT NOT NULL,        -- Moderated display label for checklist/radio injection
-            status TEXT DEFAULT 'ACCEPTED', -- 'PENDING', 'ACCEPTED', 'REJECTED'
+            concept_type TEXT NOT NULL,
+            source_text TEXT NOT NULL,
+            label TEXT NOT NULL,
+            status TEXT DEFAULT 'ACCEPTED',
             session_token TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -130,12 +163,6 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_survey_project_order ON process_survey_rows(project_id, row_order);
         CREATE INDEX IF NOT EXISTS idx_concepts_lookup ON accepted_concepts(project_id, concept_type, status);
 
-        -- ------------------------------------------------------------------
-        -- Multi-standard reference catalog and master discovery survey.
-        -- req_id is the single shared key: standards_requirements.req_id is
-        -- the primary key, survey_questions and entity_requirement_assessments
-        -- hold it as a foreign key. Nothing else is joined across layers.
-        -- ------------------------------------------------------------------
         CREATE TABLE IF NOT EXISTS standards_requirements (
             req_id TEXT PRIMARY KEY,
             standard_code TEXT NOT NULL,
@@ -171,8 +198,6 @@ def init_db():
             FOREIGN KEY (req_id) REFERENCES standards_requirements(req_id) ON DELETE CASCADE
         );
 
-        -- Discovered organisational entities: processes, sub-processes,
-        -- activities, systems, data assets and roles, in a parent hierarchy.
         CREATE TABLE IF NOT EXISTS org_entities (
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
@@ -188,8 +213,6 @@ def init_db():
             FOREIGN KEY (parent_id) REFERENCES org_entities(id) ON DELETE CASCADE
         );
 
-        -- Directed links used for inheritance: a system SUPPORTS a process,
-        -- a process USES_DATA a data asset, and so on.
         CREATE TABLE IF NOT EXISTS entity_dependencies (
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
@@ -204,8 +227,6 @@ def init_db():
             UNIQUE (from_entity_id, to_entity_id, dependency_type)
         );
 
-        -- One answer per (entity, requirement). status is produced by the
-        -- deterministic rule engine, never guessed by the UI.
         CREATE TABLE IF NOT EXISTS entity_requirement_assessments (
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
@@ -227,6 +248,89 @@ def init_db():
             UNIQUE (entity_id, req_id)
         );
 
+        -- ------------------------------------------------------------------
+        -- PMGA v2 Unified Single-Source-of-Truth Tables (Milestone 1)
+        -- ------------------------------------------------------------------
+        CREATE TABLE IF NOT EXISTS process_models (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            entity_id TEXT,
+            title TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            ir_json TEXT NOT NULL DEFAULT '{}',
+            bpmn_xml TEXT NOT NULL DEFAULT '',
+            description_text TEXT,
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (entity_id) REFERENCES org_entities(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS session_turns (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            thread_id TEXT NOT NULL,
+            role TEXT NOT NULL, -- 'user' | 'coach' | 'system'
+            content TEXT NOT NULL,
+            input_kind TEXT NOT NULL DEFAULT 'chat', -- 'chat' | 'excel' | 'document' | 'bpmn_edit'
+            patch_summary_json TEXT NOT NULL DEFAULT '{}',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS evidence_items (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            entity_id TEXT,
+            document_id TEXT,
+            req_id TEXT,
+            claim_text TEXT NOT NULL,
+            source_quote TEXT NOT NULL,
+            source_location TEXT,
+            status TEXT NOT NULL DEFAULT 'DOCUMENT_CLAIM', -- 'DOCUMENT_CLAIM' | 'USER_CONFIRMED' | 'CONTRADICTED'
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (entity_id) REFERENCES org_entities(id) ON DELETE CASCADE,
+            FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS remediation_gaps (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            process_model_id TEXT,
+            entity_id TEXT,
+            req_id TEXT NOT NULL,
+            standard_clause TEXT NOT NULL,
+            affected_node_ids_json TEXT NOT NULL DEFAULT '[]',
+            severity TEXT NOT NULL DEFAULT 'MODERATE', -- 'CRITICAL' | 'HIGH' | 'MODERATE' | 'INFO'
+            priority_bucket TEXT NOT NULL DEFAULT 'BEFORE_DIGITALIZATION', -- 'QUICK_WIN' | 'BEFORE_DIGITALIZATION' | 'ONGOING'
+            gap_category TEXT NOT NULL DEFAULT 'GOVERNANCE',
+            warm_summary TEXT NOT NULL,
+            policy_vs_reality TEXT,
+            action_steps_json TEXT NOT NULL DEFAULT '[]',
+            roles_to_involve_json TEXT NOT NULL DEFAULT '[]',
+            compensating_options_json TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'OPEN', -- 'OPEN' | 'IN_PROGRESS' | 'ACCEPTED_RISK' | 'RESOLVED'
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (process_model_id) REFERENCES process_models(id) ON DELETE SET NULL,
+            FOREIGN KEY (entity_id) REFERENCES org_entities(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS brand_profiles (
+            project_id TEXT PRIMARY KEY,
+            org_name TEXT NOT NULL DEFAULT 'Municipal Administration',
+            logo_data_uri TEXT,
+            primary_color TEXT NOT NULL DEFAULT '#1E4E68',
+            accent_color TEXT NOT NULL DEFAULT '#C86D44',
+            font_family TEXT NOT NULL DEFAULT 'Plus Jakarta Sans',
+            footer_text TEXT DEFAULT 'Prepared with PMGA Resilience & Process Workbench',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_requirements_standard ON standards_requirements(standard_code, req_id);
         CREATE INDEX IF NOT EXISTS idx_requirements_phase ON standards_requirements(phase_category, req_id);
         CREATE INDEX IF NOT EXISTS idx_questions_sequence ON survey_questions(sequence_order);
@@ -236,5 +340,86 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_dependencies_project_to ON entity_dependencies(project_id, to_entity_id, dependency_type);
         CREATE INDEX IF NOT EXISTS idx_assessments_project_status ON entity_requirement_assessments(project_id, status);
         CREATE INDEX IF NOT EXISTS idx_assessments_entity ON entity_requirement_assessments(entity_id, req_id);
+        CREATE INDEX IF NOT EXISTS idx_process_models_project ON process_models(project_id, is_primary);
+        CREATE INDEX IF NOT EXISTS idx_session_turns_project ON session_turns(project_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_evidence_project ON evidence_items(project_id, status, req_id);
+        CREATE INDEX IF NOT EXISTS idx_remediation_gaps_project ON remediation_gaps(project_id, severity, status);
         """)
 
+        # Non-destructive column guards for existing SQLite databases
+        _ensure_column(conn, "remediation_gaps", "priority_bucket", "priority_bucket TEXT NOT NULL DEFAULT 'BEFORE_DIGITALIZATION'")
+        _ensure_column(conn, "org_entities", "metadata_json", "metadata_json TEXT NOT NULL DEFAULT '{}'")
+
+
+def purge_project_data(project_id: str) -> Dict[str, Any]:
+    """Expunges all legacy, v2, uploaded file, and LangGraph checkpoint data for a project (GDPR Art. 17)."""
+    removed_files = 0
+    failed_files = 0
+    with get_db() as conn:
+        docs = conn.execute("SELECT file_path FROM documents WHERE project_id = ?", (project_id,)).fetchall()
+        for d in docs:
+            fp = d["file_path"]
+            if fp and os.path.exists(fp):
+                try:
+                    os.remove(fp)
+                    removed_files += 1
+                except OSError as exc:
+                    failed_files += 1
+                    logger.warning("Failed to remove uploaded file %s during GDPR purge: %s", fp, exc)
+
+        # Delete child tables explicitly as defense-in-depth alongside ON DELETE CASCADE
+        for table in (
+            "remediation_gaps",
+            "evidence_items",
+            "session_turns",
+            "process_models",
+            "brand_profiles",
+            "entity_requirement_assessments",
+            "entity_dependencies",
+            "org_entities",
+            "gap_assessments",
+            "bpmn_models",
+            "process_survey_rows",
+            "accepted_concepts",
+            "documents",
+        ):
+            conn.execute(f"DELETE FROM {table} WHERE project_id = ?", (project_id,))
+        res = conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        project_deleted = res.rowcount > 0
+
+    # Also purge LangGraph SqliteSaver checkpoint state for thread_id = project_id
+    cp_path = settings.checkpoint_db_path
+    checkpoints_purged = 0
+    if os.path.exists(cp_path):
+        try:
+            cp_conn = sqlite3.connect(cp_path, timeout=30.0)
+            try:
+                tables = {
+                    r[0]
+                    for r in cp_conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                }
+                for cp_table in ("checkpoints", "writes", "checkpoint_blobs"):
+                    if cp_table in tables:
+                        r = cp_conn.execute(f"DELETE FROM {cp_table} WHERE thread_id = ?", (project_id,))
+                        checkpoints_purged += r.rowcount
+                cp_conn.commit()
+            finally:
+                cp_conn.close()
+        except sqlite3.Error as exc:
+            logger.error("Failed to purge LangGraph checkpoint DB for project %s: %s", project_id, exc, exc_info=True)
+            raise PersistenceError(f"Failed to purge workflow checkpoints: {exc}") from exc
+
+    logger.info(
+        "GDPR purge completed for project=%s deleted=%s removed_files=%d failed_files=%d checkpoints_purged=%d",
+        project_id,
+        project_deleted,
+        removed_files,
+        failed_files,
+        checkpoints_purged,
+    )
+    return {
+        "project_deleted": project_deleted,
+        "removed_files": removed_files,
+        "failed_files": failed_files,
+        "checkpoints_purged": checkpoints_purged,
+    }

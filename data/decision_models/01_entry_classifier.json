@@ -1,0 +1,213 @@
+{
+  "contentType": "application/vnd.gorules.decision",
+  "name": "01_entry_classifier",
+  "description": "Classifies raw Excel/chat entries into SYSTEM, PROCESS, or ACTIVITY and flags disambiguation and vague-criticality CIA unpacking.",
+  "nodes": [
+    {
+      "id": "dt_entry_classifier",
+      "type": "decisionTableNode",
+      "name": "Entry Classifier",
+      "content": {
+        "hitPolicy": "first",
+        "inputs": [
+          { "id": "in_explicit_kind", "name": "Explicit Kind Col", "field": "explicit_kind_col", "type": "expression" },
+          { "id": "in_app_kw", "name": "Has App Keyword", "field": "has_app_keyword", "type": "expression" },
+          { "id": "in_action_verb", "name": "Has Action Verb", "field": "has_action_verb", "type": "expression" },
+          { "id": "in_word_count", "name": "Word Count", "field": "word_count", "type": "expression" },
+          { "id": "in_raw_crit", "name": "Raw Criticality", "field": "raw_criticality", "type": "expression" }
+        ],
+        "outputs": [
+          { "id": "out_entity_type", "name": "Entity Type", "field": "entity_type", "type": "expression" },
+          { "id": "out_disambig", "name": "Needs Disambiguation", "field": "needs_disambiguation", "type": "expression" },
+          { "id": "out_cia_unpack", "name": "Needs CIA Unpacking", "field": "needs_cia_unpacking", "type": "expression" },
+          { "id": "out_reason", "name": "Clarification Reason", "field": "clarification_reason", "type": "expression" }
+        ],
+        "rules": [
+          {
+            "_id": "ec_explicit_sys_vague",
+            "_description": "Explicit system/app column with vague criticality label",
+            "in_explicit_kind": "\"SYSTEM\", \"APPLICATION\", \"APP\", \"ANWENDUNG\", \"SOFTWARE\", \"TOOL\"",
+            "in_app_kw": "",
+            "in_action_verb": "",
+            "in_word_count": "",
+            "in_raw_crit": "matches \"(?i)\\b(kritisch|critical|sehr\\s+hoch|very\\s+high|hoch|high|wichtig|essential)\\b\"",
+            "out_entity_type": "\"SYSTEM\"",
+            "out_disambig": "true",
+            "out_cia_unpack": "true",
+            "out_reason": "\"Explicitly tagged as an IT system with a broad criticality label; clarify which business processes depend on it and unpack CIA/BIA protection needs.\""
+          },
+          {
+            "_id": "ec_explicit_sys",
+            "_description": "Explicit system/app column without vague criticality",
+            "in_explicit_kind": "\"SYSTEM\", \"APPLICATION\", \"APP\", \"ANWENDUNG\", \"SOFTWARE\", \"TOOL\"",
+            "in_app_kw": "",
+            "in_action_verb": "",
+            "in_word_count": "",
+            "in_raw_crit": "",
+            "out_entity_type": "\"SYSTEM\"",
+            "out_disambig": "true",
+            "out_cia_unpack": "false",
+            "out_reason": "\"Explicitly tagged as an IT system; clarify which business processes depend on it so protection needs can be inherited.\""
+          },
+          {
+            "_id": "ec_explicit_proc_vague",
+            "_description": "Explicit process column with vague criticality label",
+            "in_explicit_kind": "\"PROCESS\", \"PROZESS\", \"GESCHÄFTSPROZESS\", \"VORGANG\"",
+            "in_app_kw": "",
+            "in_action_verb": "",
+            "in_word_count": "",
+            "in_raw_crit": "matches \"(?i)\\b(kritisch|critical|sehr\\s+hoch|very\\s+high|hoch|high|wichtig|essential)\\b\"",
+            "out_entity_type": "\"PROCESS\"",
+            "out_disambig": "false",
+            "out_cia_unpack": "true",
+            "out_reason": "\"Business process has a broad criticality label; unpack into Confidentiality, Integrity, Availability and RTO/MTPD.\""
+          },
+          {
+            "_id": "ec_explicit_proc",
+            "_description": "Explicit process column",
+            "in_explicit_kind": "\"PROCESS\", \"PROZESS\", \"GESCHÄFTSPROZESS\", \"VORGANG\"",
+            "in_app_kw": "",
+            "in_action_verb": "",
+            "in_word_count": "",
+            "in_raw_crit": "",
+            "out_entity_type": "\"PROCESS\"",
+            "out_disambig": "false",
+            "out_cia_unpack": "false",
+            "out_reason": "\"Recognized as a business process.\""
+          },
+          {
+            "_id": "ec_explicit_act_vague",
+            "_description": "Explicit activity column with vague criticality",
+            "in_explicit_kind": "\"ACTIVITY\", \"AKTIVITÄT\", \"STEP\", \"TASK\"",
+            "in_app_kw": "",
+            "in_action_verb": "",
+            "in_word_count": "",
+            "in_raw_crit": "matches \"(?i)\\b(kritisch|critical|sehr\\s+hoch|very\\s+high|hoch|high|wichtig|essential)\\b\"",
+            "out_entity_type": "\"ACTIVITY\"",
+            "out_disambig": "false",
+            "out_cia_unpack": "true",
+            "out_reason": "\"Activity has a broad criticality label; confirm parent process and unpack CIA protection needs.\""
+          },
+          {
+            "_id": "ec_explicit_act",
+            "_description": "Explicit activity column",
+            "in_explicit_kind": "\"ACTIVITY\", \"AKTIVITÄT\", \"STEP\", \"TASK\"",
+            "in_app_kw": "",
+            "in_action_verb": "",
+            "in_word_count": "",
+            "in_raw_crit": "",
+            "out_entity_type": "\"ACTIVITY\"",
+            "out_disambig": "false",
+            "out_cia_unpack": "false",
+            "out_reason": "\"Recognized as a granular activity.\""
+          },
+          {
+            "_id": "ec_app_kw_vague",
+            "_description": "App keyword without action verb and vague criticality (e.g. Anmeldesystem | kritisch)",
+            "in_explicit_kind": "",
+            "in_app_kw": "true",
+            "in_action_verb": "false",
+            "in_word_count": "",
+            "in_raw_crit": "matches \"(?i)\\b(kritisch|critical|sehr\\s+hoch|very\\s+high|hoch|high|wichtig|essential)\\b\"",
+            "out_entity_type": "\"SYSTEM\"",
+            "out_disambig": "true",
+            "out_cia_unpack": "true",
+            "out_reason": "\"Looks like an IT system/application name paired with a broad criticality label; ask which business process uses it and clarify CIA/BIA impact.\""
+          },
+          {
+            "_id": "ec_app_kw",
+            "_description": "App keyword without action verb",
+            "in_explicit_kind": "",
+            "in_app_kw": "true",
+            "in_action_verb": "false",
+            "in_word_count": "",
+            "in_raw_crit": "",
+            "out_entity_type": "\"SYSTEM\"",
+            "out_disambig": "true",
+            "out_cia_unpack": "false",
+            "out_reason": "\"Looks like an IT system/application name; clarify which business process depends on it.\""
+          },
+          {
+            "_id": "ec_verb_vague",
+            "_description": "Contains action verb with vague criticality",
+            "in_explicit_kind": "",
+            "in_app_kw": "",
+            "in_action_verb": "true",
+            "in_word_count": "",
+            "in_raw_crit": "matches \"(?i)\\b(kritisch|critical|sehr\\s+hoch|very\\s+high|hoch|high|wichtig|essential)\\b\"",
+            "out_entity_type": "\"PROCESS\"",
+            "out_disambig": "false",
+            "out_cia_unpack": "true",
+            "out_reason": "\"Action-oriented entry indicates a business process; unpack its broad criticality label into CIA and RTO/MTPD.\""
+          },
+          {
+            "_id": "ec_verb",
+            "_description": "Contains action verb",
+            "in_explicit_kind": "",
+            "in_app_kw": "",
+            "in_action_verb": "true",
+            "in_word_count": "",
+            "in_raw_crit": "",
+            "out_entity_type": "\"PROCESS\"",
+            "out_disambig": "false",
+            "out_cia_unpack": "false",
+            "out_reason": "\"Action-oriented entry classified as a business process.\""
+          },
+          {
+            "_id": "ec_short_noun_vague",
+            "_description": "Short 1-2 word noun without verb + vague criticality",
+            "in_explicit_kind": "",
+            "in_app_kw": "",
+            "in_action_verb": "false",
+            "in_word_count": "<= 2",
+            "in_raw_crit": "matches \"(?i)\\b(kritisch|critical|sehr\\s+hoch|very\\s+high|hoch|high|wichtig|essential)\\b\"",
+            "out_entity_type": "\"SYSTEM\"",
+            "out_disambig": "true",
+            "out_cia_unpack": "true",
+            "out_reason": "\"Short noun entry without an action verb may be an IT tool or category; confirm whether it is a system or process and unpack criticality.\""
+          },
+          {
+            "_id": "ec_short_noun",
+            "_description": "Short 1-2 word noun without action verb",
+            "in_explicit_kind": "",
+            "in_app_kw": "",
+            "in_action_verb": "false",
+            "in_word_count": "<= 2",
+            "in_raw_crit": "",
+            "out_entity_type": "\"SYSTEM\"",
+            "out_disambig": "true",
+            "out_cia_unpack": "false",
+            "out_reason": "\"Short noun entry without an action verb; confirm whether it is a system/tool or a business process.\""
+          },
+          {
+            "_id": "ec_default_vague",
+            "_description": "Default process fallback with vague criticality",
+            "in_explicit_kind": "",
+            "in_app_kw": "",
+            "in_action_verb": "",
+            "in_word_count": "",
+            "in_raw_crit": "matches \"(?i)\\b(kritisch|critical|sehr\\s+hoch|very\\s+high|hoch|high|wichtig|essential)\\b\"",
+            "out_entity_type": "\"PROCESS\"",
+            "out_disambig": "false",
+            "out_cia_unpack": "true",
+            "out_reason": "\"Multi-word entry classified as a process; unpack criticality into CIA and BIA.\""
+          },
+          {
+            "_id": "ec_default",
+            "_description": "Default process fallback",
+            "in_explicit_kind": "",
+            "in_app_kw": "",
+            "in_action_verb": "",
+            "in_word_count": "",
+            "in_raw_crit": "",
+            "out_entity_type": "\"PROCESS\"",
+            "out_disambig": "false",
+            "out_cia_unpack": "false",
+            "out_reason": "\"Multi-word entry classified as a business process.\""
+          }
+        ]
+      }
+    }
+  ],
+  "edges": []
+}

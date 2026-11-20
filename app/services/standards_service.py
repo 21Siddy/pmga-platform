@@ -28,6 +28,22 @@ logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _ready = False
+_ready_db_path: Optional[str] = None
+
+
+def _db_has_catalog() -> bool:
+    try:
+        with get_db() as conn:
+            tbl = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='standards_requirements'"
+            ).fetchone()
+            if not tbl:
+                return False
+            cnt = conn.execute("SELECT COUNT(*) AS c FROM standards_requirements").fetchone()["c"]
+            return cnt == 133
+    except Exception:
+        return False
+
 
 REQUIREMENT_INSERT_ORDER = (
     "req_id",
@@ -110,19 +126,19 @@ def _sync_rows(catalog: List[Dict[str, Any]], questions: List[Dict[str, Any]]) -
 
 def ensure_catalog_ready(force: bool = False) -> Dict[str, Any]:
     """Create artefacts and rows if needed. Idempotent and thread-safe."""
-    global _ready
-    if _ready and not force:
+    global _ready, _ready_db_path
+    cur_db = os.path.abspath(settings.db_path)
+    if _ready and _ready_db_path == cur_db and not force and _db_has_catalog():
         return _state()
 
     with _lock:
-        if _ready and not force:
+        cur_db = os.path.abspath(settings.db_path)
+        if _ready and _ready_db_path == cur_db and not force and _db_has_catalog():
             return _state()
 
         init_db()
         written = ensure_standards_and_survey(settings.DATA_DIR, force=force)
 
-        # Read the workbooks back instead of trusting the in-memory builder:
-        # that is what makes the Excel files auditable, not decorative.
         catalog = load_requirement_catalog(os.path.join(settings.DATA_DIR, "standards"))
         questions = load_survey_catalog(os.path.join(settings.DATA_DIR, "surveys", "Master_Discovery_Survey.xlsx"))
 
@@ -131,6 +147,7 @@ def ensure_catalog_ready(force: bool = False) -> Dict[str, Any]:
 
         _sync_rows(catalog, questions)
         _ready = True
+        _ready_db_path = cur_db
         logger.info(
             "Standards catalog ready: %d requirements, %d survey questions, %d files written",
             len(catalog),
@@ -153,8 +170,9 @@ def _state() -> Dict[str, Any]:
 
 def reset_cache() -> None:
     """Test helper: force the next ``ensure_catalog_ready`` call to re-run."""
-    global _ready
+    global _ready, _ready_db_path
     _ready = False
+    _ready_db_path = None
 
 
 def list_requirements(
