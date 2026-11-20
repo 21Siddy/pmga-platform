@@ -63,13 +63,14 @@ const API = {
   async handleResponse(res) {
     if (!res.ok) {
       let errorMsg = `Server error ${res.status}`;
-      try {
-        const errJson = await res.json();
-        errorMsg = errJson.detail || errJson.message || errorMsg;
-      } catch (e) {
-        // Fallback for non-JSON errors
-        const text = await res.text();
-        if (text) errorMsg = text.slice(0, 200);
+      const rawText = await res.text();
+      if (rawText) {
+        try {
+          const errJson = JSON.parse(rawText);
+          errorMsg = errJson.message || errJson.detail || errorMsg;
+        } catch (e) {
+          errorMsg = rawText.slice(0, 200);
+        }
       }
       throw new Error(errorMsg);
     }
@@ -300,5 +301,107 @@ const API = {
   async getPlotholes(projectId) {
     const res = await fetch(`/api/v1/projects/${projectId}/plotholes`);
     return this.handleResponse(res);
+  },
+
+  async getWorkspace(projectId) {
+    const res = await fetch(`/api/v1/projects/${projectId}/workspace`, {
+      headers: { ...this.getHeaders() }
+    });
+    return this.handleResponse(res);
+  },
+
+  async sendTurn(projectId, opts = {}) {
+    const {
+      inputKind = 'chat',
+      message = '',
+      bpmnXml = '',
+      title = '',
+      activeProcessId = null,
+      docType = 'AUTO',
+      file = null,
+      language = 'en'
+    } = opts;
+
+    if (file) {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (message) fd.append('message', message);
+      if (activeProcessId) fd.append('active_process_id', activeProcessId);
+      if (docType) fd.append('doc_type', docType);
+      fd.append('language', language);
+      fd.append('provider', this.getProvider());
+      if (this.getModelName()) fd.append('model_name', this.getModelName());
+      if (this.getBaseUrl()) fd.append('base_url', this.getBaseUrl());
+
+      const res = await fetch(`/api/v1/projects/${projectId}/turn`, {
+        method: 'POST',
+        headers: { ...this.getHeaders() },
+        body: fd
+      });
+      return this.handleResponse(res);
+    }
+
+    const res = await fetch(`/api/v1/projects/${projectId}/turn`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getHeaders()
+      },
+      body: JSON.stringify({
+        input_kind: inputKind,
+        message,
+        bpmn_xml: bpmnXml || undefined,
+        title: title || undefined,
+        active_process_id: activeProcessId || null,
+        doc_type: docType,
+        language,
+        provider: this.getProvider(),
+        model_name: this.getModelName() || null,
+        base_url: this.getBaseUrl() || null
+      })
+    });
+    return this.handleResponse(res);
+  },
+
+  async syncProcessBpmn(projectId, processId, bpmnXml, extractDescription = true) {
+    const res = await fetch(`/api/v1/projects/${projectId}/processes/${processId}/bpmn`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getHeaders()
+      },
+      body: JSON.stringify({
+        bpmn_xml: bpmnXml,
+        extract_description: extractDescription,
+        provider: this.getProvider(),
+        model_name: this.getModelName() || null,
+        base_url: this.getBaseUrl() || null
+      })
+    });
+    return this.handleResponse(res);
+  },
+
+  async updateGapStatus(projectId, gapId, status) {
+    const res = await fetch(`/api/v1/projects/${projectId}/gaps/${gapId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    return this.handleResponse(res);
+  },
+
+  async saveBrandProfile(projectId, payload) {
+    const res = await fetch(`/api/v1/projects/${projectId}/brand`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return this.handleResponse(res);
+  },
+
+  getDeliverableUrl(projectId, docType, format = 'html', processId = null) {
+    const params = new URLSearchParams({ format });
+    if (processId) params.set('process_id', processId);
+    return `/api/v1/projects/${projectId}/deliverables/${encodeURIComponent(docType)}?${params.toString()}`;
   }
 };

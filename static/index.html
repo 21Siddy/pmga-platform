@@ -3,543 +3,365 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PMGA — Process Management &amp; Gap Analysis Workbench</title>
-  <meta name="description" content="Non-blocking Process Management, Verbatim Survey, and ISO 27002 Gap Analysis Workbench for Critical Infrastructure and Municipalities">
-
-  <!-- Typography: Plus Jakarta Sans + JetBrains Mono (Precision Studio) -->
+  <title>PMGA Studio — Interactive BPMN 2.0 Studio &amp; Municipal Guide</title>
+  <meta name="description" content="Guided multi-session municipal workbench turning spreadsheets, conversations, and policies into BPMN 2.0 diagrams and brandable BSI/ISO deliverables.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-  <!-- bpmn-js Toolkit CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/diagram-js.css" />
-  <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/bpmn-js.css" />
-  <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/bpmn-font/css/bpmn.css" />
-
-  <link rel="stylesheet" href="/static/css/styles.css?v=2.1.0">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/diagram-js.css">
+  <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/bpmn-js.css">
+  <link rel="stylesheet" href="https://unpkg.com/bpmn-js@17.11.1/dist/assets/bpmn-font/css/bpmn-embedded.css">
+  <link rel="stylesheet" href="/static/css/styles.css?v=3.0.0">
 </head>
-<body>
+<body class="studio-body">
 
-  <!-- Top Navigation & Header Bar -->
+  <!-- Calm Top Header -->
   <header class="app-header">
-    <a href="/" class="brand" style="text-decoration: none;" title="Back to Overview">
+    <a href="/" class="brand" title="Back to PMGA Overview">
       <div class="brand-crest">PMGA</div>
       <div class="brand-titles">
-        <h1>PMGA STUDIO</h1>
-        <span class="subtitle">Resilience &amp; Compliance Studio</span>
+        <h1>PMGA WORKBENCH</h1>
+        <span class="subtitle">Interactive BPMN 2.0 Studio &amp; Municipal Resilience Guide</span>
       </div>
     </a>
 
-    <!-- Active Assessment Selector -->
-    <div class="project-indicator">
-      <label for="select-active-project" class="label">ASSESSMENT:</label>
-      <select id="select-active-project" class="civic-select">
-        <option value="">Select or Create an Assessment...</option>
-      </select>
-      <button id="btn-new-project-toggle" class="pill-btn secondary">+ New</button>
-      
-      <!-- Inline Creation Bar (Replaces window.prompt) -->
-      <div id="new-project-inline" class="new-project-inline hidden">
-        <input type="text" id="input-new-project-title" class="civic-input" placeholder="e.g. Stadtwerke Voucher &amp; IT Process Review">
-        <button id="btn-create-project-confirm" class="pill-btn primary">Create</button>
-        <button id="btn-create-project-cancel" class="pill-btn secondary">Cancel</button>
+    <div class="header-project-bar">
+      <select id="select-project" class="civic-select" aria-label="Active Municipal Project"></select>
+      <button id="btn-new-project" class="pill-btn secondary" type="button">+ New Assessment</button>
+      <div id="inline-new-project-bar" class="inline-project-creator hidden">
+        <input id="input-new-project-title" class="civic-input compact" type="text" placeholder="e.g. Stadt Bayreuth Citizen Office">
+        <button id="btn-confirm-new-project" class="pill-btn primary small" type="button">Create</button>
+        <button id="btn-cancel-new-project" class="pill-btn small" type="button">Cancel</button>
       </div>
     </div>
 
-    <!-- Global Actions & LLM Status -->
     <div class="header-actions">
-      <button id="btn-header-export-excel" class="pill-btn secondary" title="Export multi-sheet Excel with ISO Gap Assessment and Verbatim Survey">
-        Download Excel (.xlsx)
-      </button>
-      <button id="btn-byok-modal" class="byok-status-btn unconfigured" title="Configure LLM API Provider">
-        <span class="dot"></span>
-        <span id="byok-label">LLM: Check Status</span>
-      </button>
+      <select id="select-language" class="civic-select compact" aria-label="Language">
+        <option value="en">EN</option>
+        <option value="de">DE</option>
+      </select>
+      <a href="/research" class="pill-btn small secondary" title="12-Model Academic Corpus &amp; Standards Catalog">Research &amp; Standards</a>
+      <button id="btn-open-byok" class="pill-btn small" type="button">AI Key: <span id="byok-status-badge">Offline Rules</span></button>
+      <button id="btn-gdpr-purge" class="pill-btn small danger-outline" type="button" title="Delete all project data and session checkpoints">GDPR Wipe</button>
     </div>
   </header>
 
-  <!-- Calm Step Navigation Tabs -->
-  <nav class="workflow-tabs">
-    <button class="tab-btn active" data-tab="tab-intake">
-      <span class="step-num">1</span> Intake &amp; Guided Survey
-    </button>
-    <button class="tab-btn" data-tab="tab-bpmn">
-      <span class="step-num">2</span> Interactive BPMN 2.0 Studio
-    </button>
-    <button class="tab-btn" data-tab="tab-iso">
-      <span class="step-num">3</span> ISO 27002 Controls &amp; Gap Report
-    </button>
-  </nav>
+  <!-- Two-Pane Main Split -->
+  <main class="studio-split">
 
-  <!-- Non-Blocking Status Toast -->
-  <div id="status-toast" class="status-toast hidden" role="status" aria-live="polite">
-    <span id="toast-message">Ready</span>
-    <button id="toast-dismiss" aria-label="Dismiss">&times;</button>
-  </div>
-
-  <!-- Main Application Body -->
-  <main class="app-main">
-
-    <!-- TAB 1: Intake & Guided Survey (Primary Entrypoint) -->
-    <section id="tab-intake" class="tab-pane active">
-
-      <!-- Where am I? Steps driven by the diagnostics endpoint -->
-      <details id="start-guide" class="disclosure-drawer" open>
-        <summary class="disclosure-summary">
-          <span>Where am I? Start here</span>
-          <span class="disclosure-hint" id="start-guide-hint">Checking your assessment...</span>
-        </summary>
-        <div class="disclosure-body">
-          <ol id="start-guide-steps" class="start-guide-steps"></ol>
+    <!-- LEFT PANE (38%): Guided Multi-Session Coach -->
+    <section class="coach-pane" aria-label="Guided Coach & Multi-Session Input">
+      <div class="maturity-header">
+        <div class="maturity-title-row">
+          <h2>Guided Progress</h2>
+          <span id="maturity-percent" class="maturity-percent-pill">0%</span>
         </div>
-      </details>
-
-      <!-- Progressive Disclosure: Benchmarks & Archetypes Collapsible Drawer -->
-      <details class="disclosure-drawer" id="details-benchmarks">
-        <summary class="disclosure-summary">
-          <span>Reference Benchmarks &amp; 12-Model Ground-Truth Corpus</span>
-          <span class="disclosure-hint">(Click to load verified public sector and corporate case studies)</span>
-        </summary>
-        <div class="disclosure-body">
-          <div class="corpus-grid-row">
-            <div class="corpus-control-group">
-              <label for="select-corpus-model">Ground-Truth Model:</label>
-              <select id="select-corpus-model" class="civic-select">
-                <option value="">-- Choose Ground-Truth Archetype (12 Models) --</option>
-              </select>
-            </div>
-            <div class="corpus-control-group">
-              <label for="select-corpus-style">Linguistic Style:</label>
-              <select id="select-corpus-style" class="civic-select">
-                <option value="formal">1. Formal English</option>
-                <option value="shorthand">2. Messy Shorthand (-&gt;)</option>
-                <option value="out_of_order">3. Out-of-Order Sentences</option>
-                <option value="parallel_and_loop">4. Concurrency &amp; Loops</option>
-              </select>
-            </div>
-            <button id="btn-load-corpus-style" class="pill-btn secondary">Load Style into Notes</button>
-            <button id="btn-load-corpus-bpmn" class="pill-btn secondary">View Ground-Truth BPMN &rarr;</button>
-          </div>
-          <div id="corpus-model-info" class="corpus-model-info hidden">
-            <span id="corpus-archetype-tag"></span> &bull; 
-            <span id="corpus-ref-tag"></span> &bull; 
-            Nodes: <span id="corpus-nodes-count"></span>, Edges: <span id="corpus-edges-count"></span>
-          </div>
-
-          <div class="benchmarks-subgrid" style="margin-top: 1rem;">
-            <h4>Verified Municipal &amp; Infrastructure Case Studies:</h4>
-            <div id="benchmarks-list" class="benchmarks-compact-list">
-              <span class="loading-state">Loading empirical case studies...</span>
-            </div>
-          </div>
-        </div>
-      </details>
-
-      <!-- Clean Intake Ingest Area -->
-      <div class="intake-section">
-        <div class="intake-split-grid">
-          
-          <!-- Panel A: Operational Reality / Upload -->
-          <div class="intake-card reality-card">
-            <div class="card-header-row">
-              <h3>Operational Evidence &amp; Process Notes</h3>
-              <span class="card-tag actual">Lived Staff Reality</span>
-            </div>
-            <p class="card-desc">Paste field notes or drop a multi-sheet Excel (.xlsx), Word (.docx), PDF, or .bpmn file. Preserves sheet names and cell text verbatim.</p>
-            
-            <textarea id="input-actual-process" class="civic-textarea" placeholder="Paste staff notes, shorthand (->), or dump Excel entries (e.g. HR System, Gutscheinsystem, Rechnungssystem - kritisch)..."></textarea>
-            
-            <div class="file-upload-row">
-              <label class="file-label">
-                <span>Upload Excel / Document / .bpmn</span>
-                <input type="file" id="file-actual-process" accept=".xlsx,.xlsm,.xltx,.csv,.pdf,.docx,.txt,.md,.bpmn,.xml">
-              </label>
-              <span id="file-actual-name" class="uploaded-filename">No file selected</span>
-            </div>
-          </div>
-
-          <!-- Panel B: Formal Policy / Rules -->
-          <div class="intake-card policy-card">
-            <div class="card-header-row">
-              <h3>Formal Mandate &amp; Policy Context</h3>
-              <span class="card-tag formal">Official Policy</span>
-            </div>
-            <p class="card-desc">Official guidelines, statutory directives, or handbook rules to evaluate compliance and operational drift against.</p>
-            
-            <textarea id="input-formal-policy" class="civic-textarea" placeholder="e.g. Directive SEC-2023: All records must be archived in central DMS. Unencrypted USB storage and manual email handoffs strictly prohibited..."></textarea>
-
-            <div class="file-upload-row">
-              <label class="file-label">
-                <span>Upload Directive / Handbook</span>
-                <input type="file" id="file-formal-policy" accept=".pdf,.docx,.txt,.md">
-              </label>
-              <span id="file-formal-name" class="uploaded-filename">No file selected</span>
-            </div>
-          </div>
-
-        </div>
-
-        <div class="intake-actions-bar">
-          <button id="btn-generate-bpmn" class="pill-btn primary large">
-            Generate Diagram &amp; Start Guided Survey &rarr;
-          </button>
-        </div>
+        <div id="maturity-strip" class="maturity-strip"></div>
       </div>
 
-      <!-- Non-Blocking Guided Survey & Verbatim Sheet Workspace -->
-      <div id="survey-workspace" class="survey-workspace">
-        <div class="survey-header-bar">
-          <div>
-            <h3>Verbatim Process Survey &amp; Discovery Interview</h3>
-            <span id="survey-progress-label" class="subtext">0 items recorded</span>
+      <div id="llm-offline-banner" class="coach-mode-banner">
+        <span id="llm-mode-text">Running in <strong>Deterministic Civic Rules Mode</strong> (offline, zero external AI).</span>
+        <button id="btn-banner-byok" class="pill-btn small" type="button">Connect AI Key</button>
+      </div>
+
+      <div id="coach-scroll" class="coach-scroll">
+        <!-- 4 Calm Entry Cards -->
+        <div id="onboarding-cards" class="onboarding-grid">
+          <button id="btn-onboard-scratch" type="button" class="onboarding-card">
+            <div class="oc-eyebrow">Path 1 &bull; Chat</div>
+            <div class="oc-title">Start from Scratch</div>
+            <div class="oc-desc">Describe one service in 2–3 plain sentences. We draft the first diagram and guide you step by step.</div>
+          </button>
+          <button id="btn-onboard-excel" type="button" class="onboarding-card">
+            <div class="oc-eyebrow">Path 2 &bull; Spreadsheet</div>
+            <div class="oc-title">Messy Excel Dump</div>
+            <div class="oc-desc">Drop multi-sheet asset or process lists (.xlsx). PMGA separates apps from workflows automatically.</div>
+          </button>
+          <button id="btn-onboard-document" type="button" class="onboarding-card">
+            <div class="oc-eyebrow">Path 3 &bull; Policy / AGB / SBOM</div>
+            <div class="oc-title">Handbook, AGB or SBOM</div>
+            <div class="oc-desc">Upload PDF, Word, Markdown, or CycloneDX/SPDX. Gaps and contradictions are verified before claiming compliance.</div>
+          </button>
+          <button id="btn-onboard-bpmn" type="button" class="onboarding-card">
+            <div class="oc-eyebrow">Path 4 &bull; Existing Model</div>
+            <div class="oc-title">Upload or Draw BPMN</div>
+            <div class="oc-desc">Import any `.bpmn` diagram to generate its plain-English description and surface missing safeguards.</div>
+          </button>
+        </div>
+
+        <!-- Multi-Session History Feed -->
+        <div id="session-feed" class="session-feed" aria-live="polite"></div>
+
+        <!-- Active Quick-Reply Chips -->
+        <div id="coach-quick-chips" class="quick-chips-row"></div>
+      </div>
+
+      <!-- Sticky Input Composer + Universal File Dropzone -->
+      <div id="coach-composer" class="coach-composer">
+        <div class="composer-file-row">
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <input id="file-universal-upload" type="file" class="hidden" accept=".xlsx,.xlsm,.xltx,.pdf,.docx,.doc,.txt,.md,.markdown,.csv,.json,.yaml,.yml,.bpmn,.xml">
+            <button id="btn-attach-file" class="pill-btn small secondary" type="button">+ Attach File (Excel, PDF, BPMN, SBOM)</button>
+            <select id="select-upload-doctype" class="civic-select compact" aria-label="Document Classification">
+              <option value="AUTO">Auto-detect document</option>
+              <option value="FORMAL_POLICY">Policy / Handbook</option>
+              <option value="AGB_TERMS">Supplier AGB / SLA</option>
+              <option value="SBOM_MANIFEST">SBOM / Dependency List</option>
+              <option value="EXCEL_INVENTORY">Excel Asset / Process Dump</option>
+            </select>
           </div>
-          <div class="survey-progress-pill">
-            <div id="survey-progress-bar" class="progress-fill" style="width: 0%;"></div>
-            <span id="survey-progress-text">0% Complete</span>
+          <span id="pending-file-chip" class="pending-file-chip hidden">
+            <span id="pending-file-name"></span>
+            <button id="btn-clear-pending-file" type="button" title="Remove attachment">&times;</button>
+          </span>
+        </div>
+
+        <div class="composer-input-row">
+          <textarea id="input-turn-message" class="civic-textarea" rows="2" placeholder="Describe a municipal process, answer the coach's question, or add context for an attached file..."></textarea>
+          <button id="btn-send-turn" class="pill-btn primary" type="button">Send</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANE (62%): Living Workspace -->
+    <section class="workspace-pane" aria-label="Living Municipal Workspace">
+      <div class="workspace-tabs" role="tablist">
+        <button id="tab-btn-bpmn" type="button" class="workspace-tab-btn active" role="tab" data-view="view-bpmn">
+          Process Map (BPMN 2.0) <span id="tab-count-processes" class="tab-count-pill">0</span>
+        </button>
+        <button id="tab-btn-architecture" type="button" class="workspace-tab-btn" role="tab" data-view="view-architecture">
+          Architecture &amp; Dependencies <span id="tab-count-entities" class="tab-count-pill">0</span>
+        </button>
+        <button id="tab-btn-remediation" type="button" class="workspace-tab-btn" role="tab" data-view="view-remediation">
+          Action &amp; Remediation Plan <span id="tab-count-gaps" class="tab-count-pill">0</span>
+        </button>
+        <button id="tab-btn-deliverables" type="button" class="workspace-tab-btn" role="tab" data-view="view-deliverables">
+          Documents &amp; Exports
+        </button>
+      </div>
+
+      <div class="workspace-body">
+
+        <!-- VIEW 1: Process Map (BPMN 2.0) -->
+        <div id="view-bpmn" class="workspace-view active">
+          <div class="bpmn-toolbar">
+            <div class="bpmn-toolbar-group">
+              <label for="select-process-model" class="field-label" style="margin:0;">Active Process</label>
+              <select id="select-process-model" class="civic-select compact"></select>
+              <button id="btn-extract-canvas-gaps" type="button" class="pill-btn small primary">Extract Description &amp; Check Gaps</button>
+              <button id="btn-save-bpmn" type="button" class="pill-btn small secondary">Save Diagram</button>
+            </div>
+            <div class="bpmn-toolbar-group">
+              <button id="btn-zoom-fit" type="button" class="pill-btn small">Fit</button>
+              <button id="btn-zoom-in" type="button" class="pill-btn small">+</button>
+              <button id="btn-zoom-out" type="button" class="pill-btn small">&minus;</button>
+              <input id="node-width-input" type="number" class="civic-input compact" style="width:62px;" placeholder="W">
+              <input id="node-height-input" type="number" class="civic-input compact" style="width:62px;" placeholder="H">
+              <button id="btn-apply-resize" type="button" class="pill-btn small">Resize</button>
+              <button id="btn-export-bpmn" type="button" class="pill-btn small">.bpmn</button>
+              <button id="btn-export-svg" type="button" class="pill-btn small">.svg</button>
+            </div>
+          </div>
+
+          <div id="bpmn-description-banner" class="bpmn-description-banner">
+            Start a turn on the left or upload a spreadsheet/BPMN file to view its plain-English process description here.
+          </div>
+
+          <div class="bpmn-canvas-shell">
+            <div id="bpmn-canvas"></div>
           </div>
         </div>
 
-        <div class="survey-split-layout">
-          
-          <!-- Left Column: Active Question Card + Verbatim Sheet Table -->
-          <div class="survey-left-col">
-            
-            <!-- 1. The Single Active Question Card -->
-            <div id="active-question-card" class="question-card">
-              <div class="question-card-top">
-                <span id="q-phase-badge" class="phase-badge">Phase: Scope &amp; Strukturanalyse</span>
-                <span id="q-row-badge" class="row-badge">Focused: Gutscheinsystem</span>
+        <!-- VIEW 2: Architecture & Dependencies + Evidence Ledger -->
+        <div id="view-architecture" class="workspace-view">
+          <div class="warm-card">
+            <div class="card-header-row">
+              <div>
+                <h3>BSI 200-2 IT-Grundschutz Structure &amp; Maximumprinzip Inheritance</h3>
+                <p class="subtext">Supporting IT systems automatically inherit the highest Confidentiality, Integrity, Availability, and strictest RTO/MTPD from the processes they serve.</p>
               </div>
-
-              <h4 id="q-title-text" class="question-text">
-                Which business process uses the 'Gutscheinsystem' system?
-              </h4>
-
-              <!-- Prelead Dynamic Option Chips -->
-              <div id="q-chips-container" class="chips-container">
-                <span class="chips-label">Accepted Concepts (Click to fill):</span>
-                <div id="q-chips-list" class="chips-list"></div>
-              </div>
-
-              <!-- Verbatim Answer Input -->
-              <div class="question-input-group">
-                <input type="text" id="q-answer-input" class="civic-input full-width" placeholder="Type verbatim answer (e.g. Gutscheinausstellung und Einlösung)...">
-              </div>
-
-              <!-- Repeatable Activity Loop Checkbox -->
-              <div class="repeatable-checkbox-row">
-                <label>
-                  <input type="checkbox" id="chk-is-repeatable">
-                  <span>Can this activity repeat in a loop with revisions or different outcomes?</span>
-                </label>
-              </div>
-
-              <div class="question-actions-row">
-                <button id="btn-save-survey-answer" class="pill-btn primary">Save &amp; Next Question &rarr;</button>
-                <button id="btn-skip-survey-question" class="pill-btn secondary">Skip</button>
+              <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                <input id="input-entity-name" class="civic-input compact" type="text" placeholder="Add system or process name">
+                <select id="select-entity-type" class="civic-select compact">
+                  <option value="SYSTEM">IT System / Application</option>
+                  <option value="PROCESS">Business Process</option>
+                  <option value="SUB_PROCESS">Sub-Process</option>
+                  <option value="ACTIVITY">Activity</option>
+                  <option value="DATA_ASSET">Data Asset</option>
+                  <option value="ROLE">Role / Department</option>
+                </select>
+                <input id="input-entity-owner" class="civic-input compact" type="text" placeholder="Owner role">
+                <button id="btn-add-entity" type="button" class="pill-btn small primary">Add Entity</button>
               </div>
             </div>
-
-            <!-- 2. Verbatim Rows Overview Table -->
-            <div class="verbatim-table-card">
-              <div class="table-card-header">
-                <h4>Recorded Process &amp; System Entries</h4>
-                <span class="subtext">Click any row to answer its questions</span>
+            <div class="split-2col">
+              <div>
+                <h4 style="margin:0 0 8px;">Processes, Systems &amp; Inherited Protection</h4>
+                <div id="architecture-tree"></div>
               </div>
-              <div class="table-scroll-container">
-                <table class="civic-table" id="survey-rows-table">
-                  <thead>
-                    <tr>
-                      <th width="8%">#</th>
-                      <th width="32%">Raw Dump Entry</th>
-                      <th width="18%">BSI Kind</th>
-                      <th width="24%">Associated Process</th>
-                      <th width="18%">Progress</th>
-                    </tr>
-                  </thead>
-                  <tbody id="survey-rows-tbody">
-                    <tr><td colspan="5" class="empty-state">No rows ingested yet. Drop an Excel file or paste process notes above.</td></tr>
-                  </tbody>
-                </table>
+              <div>
+                <h4 style="margin:0 0 8px;">Provenance &amp; Evidence Ledger (Negation-Safe)</h4>
+                <div id="evidence-ledger"></div>
               </div>
             </div>
-
           </div>
+        </div>
 
-          <!-- Right Column: Live BPMN Diagram Preview -->
-          <div class="survey-right-col">
-            <div class="preview-card">
-              <div class="preview-card-header">
-                <h4>Live Process Diagram (BPMN 2.0)</h4>
-                <div class="preview-header-actions">
-                  <button id="btn-open-full-studio" class="pill-btn secondary">Open Full Studio &rarr;</button>
+        <!-- VIEW 3: Action & Remediation Plan -->
+        <div id="view-remediation" class="workspace-view">
+          <div class="warm-card">
+            <div class="card-header-row">
+              <div>
+                <h3>Helpful Action &amp; Remediation Plan</h3>
+                <p class="subtext">Practical steps prioritized into Quick Wins, Before Digitalization, and Ongoing Hygiene — with compensating safeguards if legacy constraints exist.</p>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <select id="filter-gap-status" class="civic-select compact">
+                  <option value="ALL">All Items</option>
+                  <option value="OPEN">Open Only</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                  <option value="ACCEPTED_RISK">Accepted Risk</option>
+                  <option value="RESOLVED">Resolved</option>
+                </select>
+              </div>
+            </div>
+            <div id="remediation-groups"></div>
+          </div>
+        </div>
+
+        <!-- VIEW 4: Documents & Brandable Exports -->
+        <div id="view-deliverables" class="workspace-view">
+          <div class="warm-card">
+            <div class="deliverable-controls-bar">
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <label for="select-deliverable-type" class="field-label" style="margin:0;">Deliverable Pack</label>
+                <select id="select-deliverable-type" class="civic-select compact">
+                  <option value="remediation_plan">1. Action &amp; Remediation Plan</option>
+                  <option value="prozesssteckbrief">2. Prozesssteckbrief (Process Sheet)</option>
+                  <option value="strukturanalyse">3. BSI 200-2 Strukturanalyse</option>
+                  <option value="complete_pack">4. Complete Municipal Report Pack</option>
+                </select>
+                <select id="select-deliverable-process" class="civic-select compact hidden"></select>
+              </div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <a id="link-download-pdf" class="pill-btn small primary" href="#" target="_blank" rel="noopener">Download PDF</a>
+                <a id="link-open-html" class="pill-btn small secondary" href="#" target="_blank" rel="noopener">Open Print HTML</a>
+                <a id="link-download-xlsx" class="pill-btn small" href="#" target="_blank" rel="noopener">Annotated .xlsx</a>
+                <a id="link-download-bpmn" class="pill-btn small" href="#" target="_blank" rel="noopener">BPMN .bpmn</a>
+                <a id="link-download-oscal" class="pill-btn small" href="#" target="_blank" rel="noopener">OSCAL .json</a>
+              </div>
+            </div>
+
+            <div id="brand-customizer" style="margin-top:12px; padding-top:12px; border-top:var(--border-hairline);">
+              <div class="brand-form-grid">
+                <div>
+                  <label for="input-brand-org" class="field-label">Municipality / Org Name</label>
+                  <input id="input-brand-org" class="civic-input compact" style="width:100%;" type="text" placeholder="e.g. Stadt Bayreuth">
+                </div>
+                <div>
+                  <label for="select-brand-font" class="field-label">Report Typography</label>
+                  <select id="select-brand-font" class="civic-select compact" style="width:100%;">
+                    <option value="Plus Jakarta Sans">Plus Jakarta Sans</option>
+                    <option value="Inter">Inter</option>
+                    <option value="Source Sans 3">Source Sans 3</option>
+                    <option value="IBM Plex Sans">IBM Plex Sans</option>
+                    <option value="Georgia">Georgia (Editorial Serif)</option>
+                    <option value="Merriweather">Merriweather</option>
+                    <option value="system-ui">System Sans</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="input-brand-primary" class="field-label">Primary Color</label>
+                  <input id="input-brand-primary" class="civic-input compact" style="width:100%; height:34px; padding:2px;" type="color" value="#1E4E68">
+                </div>
+                <div>
+                  <label for="input-brand-accent" class="field-label">Accent Color</label>
+                  <input id="input-brand-accent" class="civic-input compact" style="width:100%; height:34px; padding:2px;" type="color" value="#C86D44">
+                </div>
+                <div>
+                  <label for="input-brand-footer" class="field-label">Footer Notice</label>
+                  <input id="input-brand-footer" class="civic-input compact" style="width:100%;" type="text" placeholder="Internal Municipal Draft">
+                </div>
+                <div>
+                  <label for="input-brand-logo" class="field-label">Coat of Arms / Logo</label>
+                  <input id="input-brand-logo" class="civic-input compact" style="width:100%;" type="file" accept=".png,.jpg,.jpeg,.webp,.svg">
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <label style="font-size:0.76rem; display:flex; align-items:center; gap:4px; cursor:pointer;">
+                    <input id="chk-clear-logo" type="checkbox"> Clear logo
+                  </label>
+                  <button id="btn-apply-brand" type="button" class="pill-btn small terracotta">Apply Branding</button>
                 </div>
               </div>
-              <div class="preview-canvas-wrapper">
-                <div id="survey-preview-canvas" class="bpmn-canvas"></div>
-              </div>
             </div>
           </div>
 
+          <iframe id="deliverable-preview-frame" class="deliverable-iframe" title="Deliverable Document Preview"></iframe>
         </div>
-      </div>
 
-      <!-- Process, Systems & Data Structure (BSI Inheritance & Proven Citations) -->
-      <details id="structure-drawer" class="disclosure-drawer" style="margin-top: 1.25rem;">
-        <summary class="disclosure-summary">
-          <span>Process, Systems &amp; Data Structure (BSI Inheritance &amp; Proven Evidence)</span>
-          <span class="disclosure-hint" id="structure-summary-hint">0 entities, 0 links</span>
-        </summary>
-        <div class="disclosure-body">
-          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center;">
-            <select id="select-entity-type" class="civic-select">
-              <option value="PROCESS">Process</option>
-              <option value="SUB_PROCESS">Sub-Process</option>
-              <option value="ACTIVITY">Activity</option>
-              <option value="SYSTEM">System / App</option>
-              <option value="DATA_ASSET">Data Asset</option>
-              <option value="ROLE">Role / Owner</option>
-            </select>
-            <input type="text" id="input-entity-name" class="civic-input" placeholder="Name (e.g. Gutscheinsystem)">
-            <input type="text" id="input-entity-owner" class="civic-input" placeholder="Owner role (optional)">
-            <select id="select-entity-parent" class="civic-select">
-              <option value="">No Parent (Top-Level)</option>
-            </select>
-            <button id="btn-add-entity" class="pill-btn secondary" type="button">+ Add Entity</button>
+        <!-- Slide-over Drawer for Clicked Gap Badge / Step Inspection -->
+        <aside id="gap-slideover" class="gap-slideover hidden" aria-label="Node Remediation Details">
+          <div class="slideover-head">
+            <h3 id="slideover-title">Helpful Next Steps</h3>
+            <button id="btn-close-slideover" type="button" class="pill-btn small">Close</button>
           </div>
-          <div id="entity-tree-container" class="benchmarks-compact-list">
-            <span class="empty-state">Upload documents or answer survey questions to build the entity hierarchy.</span>
-          </div>
-          <div id="plotholes-container" style="margin-top: 12px;"></div>
-        </div>
-      </details>
+          <div id="slideover-body" class="slideover-body"></div>
+        </aside>
 
-    </section>
-
-    <!-- TAB 2: Full Interactive BPMN 2.0 Studio -->
-    <section id="tab-bpmn" class="tab-pane">
-      <div class="bpmn-toolbar">
-        <div class="toolbar-title">
-          <h2 id="bpmn-canvas-title">Interactive BPMN 2.0 Studio</h2>
-          <span class="subtext">Standards-compliant BPMN 2.0 diagram with live element dimension resizer and mathematical verification metrics.</span>
-        </div>
-        <div class="toolbar-buttons">
-          <button id="btn-save-bpmn" class="pill-btn secondary">Save Diagram Edits</button>
-          <button id="btn-export-bpmn" class="pill-btn secondary">Export .bpmn (XML)</button>
-          <button id="btn-export-svg" class="pill-btn secondary">Export .svg</button>
-          <button id="btn-proceed-to-iso" class="pill-btn primary">Proceed to ISO Baseline &rarr;</button>
-        </div>
       </div>
-
-      <!-- Scientific Verification Telemetry Scorecard -->
-      <div id="telemetry-bar" class="telemetry-bar hidden">
-        <div class="telemetry-metric">
-          <span class="t-label">STRUCTURAL SOUNDNESS:</span>
-          <span id="t-soundness" class="t-value">--</span>
-        </div>
-        <div class="telemetry-metric">
-          <span class="t-label">SEMANTIC FAITHFULNESS:</span>
-          <span id="t-faithfulness" class="t-value">--</span>
-        </div>
-        <div class="telemetry-detail" id="t-detail">Verified 0 defects.</div>
-      </div>
-
-      <!-- Element Resizer Bar -->
-      <div class="bpmn-dimension-bar">
-        <span class="dim-label">SELECTED ELEMENT SIZE:</span>
-        <label>W: <input type="number" id="node-width-input" class="dim-input" value="130" step="10" min="60" max="400"> px</label>
-        <label>H: <input type="number" id="node-height-input" class="dim-input" value="80" step="10" min="40" max="300"> px</label>
-        <button id="btn-preset-compact" class="dim-btn">Compact</button>
-        <button id="btn-preset-standard" class="dim-btn active">Standard</button>
-        <button id="btn-preset-wide" class="dim-btn">Wide</button>
-        <button id="btn-preset-large" class="dim-btn">Large</button>
-      </div>
-
-      <div class="bpmn-wrapper resizable-container">
-        <div id="bpmn-canvas" class="bpmn-canvas"></div>
-      </div>
-    </section>
-
-    <!-- TAB 3: ISO 27002 Controls & Gap Report -->
-    <section id="tab-iso" class="tab-pane">
-      
-      <!-- Top Actions & Run Analysis -->
-      <div class="iso-header">
-        <div class="iso-title">
-          <h2>ISO/IEC 27002:2022 Baseline &amp; Gap Analysis</h2>
-          <p>Assess lived operational practices against the 93 international cybersecurity controls to identify gaps and actionable compensating controls.</p>
-        </div>
-        <div class="iso-actions">
-          <select id="filter-iso-chapter" class="civic-select">
-            <option value="">All 4 Chapters (93 Controls)</option>
-            <option value="5. Organizational">Chapter 5: Organizational (37)</option>
-            <option value="6. People">Chapter 6: People (8)</option>
-            <option value="7. Physical">Chapter 7: Physical (14)</option>
-            <option value="8. Technological">Chapter 8: Technological (34)</option>
-          </select>
-          <input type="text" id="filter-iso-search" class="civic-input" placeholder="Search controls (e.g. access, backup, password)...">
-          <button id="btn-run-gap-analysis" class="pill-btn primary">
-            Run Plain-English Gap Analysis &rarr;
-          </button>
-        </div>
-      </div>
-
-      <!-- KPI Summary Cards -->
-      <div class="kpi-grid">
-        <div class="kpi-card">
-          <span class="kpi-label">RESILIENCE SCORE</span>
-          <div class="kpi-value" id="kpi-score">--%</div>
-          <span class="kpi-sub">Operational alignment score</span>
-        </div>
-        <div class="kpi-card critical">
-          <span class="kpi-label">CRITICAL GAPS</span>
-          <div class="kpi-value" id="kpi-critical">0</div>
-          <span class="kpi-sub">High vulnerability during incidents</span>
-        </div>
-        <div class="kpi-card warning">
-          <span class="kpi-label">PARTIAL / DRIFT GAPS</span>
-          <div class="kpi-value" id="kpi-partial">0</div>
-          <span class="kpi-sub">Policy claimed but unverified in practice</span>
-        </div>
-        <div class="kpi-card info">
-          <span class="kpi-label">COMPENSATING CONTROLS</span>
-          <div class="kpi-value" id="kpi-compensating">0</div>
-          <span class="kpi-sub">Pragmatic risk tradeoffs suggested</span>
-        </div>
-      </div>
-
-      <!-- Executive Summary Box -->
-      <div class="executive-summary-box" id="exec-summary-box">
-        <h3>Executive Assessment Summary</h3>
-        <p id="exec-summary-text">Run gap analysis to evaluate process alignment.</p>
-      </div>
-
-      <!-- Gap Findings List -->
-      <div class="gap-findings-wrapper">
-        <div class="findings-header-row">
-          <h3>Identified Operational Gaps &amp; Compensating Controls</h3>
-          <div class="gap-action-buttons">
-            <button id="btn-export-excel-report" class="pill-btn secondary">Download Annotated Excel (.xlsx)</button>
-            <button id="btn-export-oscal-report" class="pill-btn secondary">Download OSCAL (.json)</button>
-            <button id="btn-gdpr-purge" class="pill-btn danger">GDPR 1-Click Project Purge</button>
-          </div>
-        </div>
-        <div class="findings-container" id="findings-container"></div>
-      </div>
-
-      <!-- Collapsible ISO 27002 Controls Catalog Table -->
-      <details class="disclosure-drawer" style="margin-top: 2rem;">
-        <summary class="disclosure-summary">
-          <span>View Full ISO/IEC 27002:2022 Catalog (93 Controls)</span>
-          <span class="disclosure-hint">(Click to expand table and inspect audit requirements)</span>
-        </summary>
-        <div class="disclosure-body" style="padding: 0;">
-          <div class="iso-table-container">
-            <table class="civic-table" id="iso-controls-table">
-              <thead>
-                <tr>
-                  <th width="10%">ID</th>
-                  <th width="22%">Control Title</th>
-                  <th width="18%">Chapter / Domain</th>
-                  <th width="35%">Plain English Requirement</th>
-                  <th width="15%">Action</th>
-                </tr>
-              </thead>
-              <tbody id="iso-controls-tbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </details>
-
     </section>
 
   </main>
 
-  <!-- ACCESSIBLE ISO CONTROL DETAIL MODAL -->
-  <div id="modal-iso-detail" class="civic-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-iso-title">
-    <div class="civic-modal large">
+  <!-- BYOK AI Settings Modal (Memory/SessionStorage only, never written to disk) -->
+  <div id="modal-byok" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-byok-title">
+    <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-title-group">
-          <span id="modal-iso-badge" class="control-id-badge">A.8.2</span>
-          <h3 id="modal-iso-title">Privileged Access Rights</h3>
-        </div>
-        <button class="modal-close" id="btn-close-iso-detail" aria-label="Close modal">&times;</button>
+        <h3 id="modal-byok-title">Session AI Provider Key (Optional)</h3>
+        <button id="btn-close-byok" type="button" class="pill-btn small">&times;</button>
       </div>
-      <div class="modal-body" id="modal-iso-body"></div>
+      <p class="subtext">PMGA works 100% offline with transparent civic decision tables. Add your own key in RAM/sessionStorage only if you want live conversational refinement.</p>
+
+      <div>
+        <label for="select-llm-provider" class="field-label">Provider</label>
+        <select id="select-llm-provider" class="civic-select" style="width:100%;">
+          <option value="gemini">Google Gemini</option>
+          <option value="openai">OpenAI (ChatGPT)</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="mistral">Mistral AI</option>
+          <option value="azure">Azure OpenAI</option>
+          <option value="kiconnect">University / Institutional Gateway</option>
+        </select>
+      </div>
+      <div>
+        <label for="input-llm-model" class="field-label">Model Override (optional)</label>
+        <input id="input-llm-model" class="civic-input" style="width:100%;" type="text" placeholder="e.g. gpt-4o-mini or gemini-2.5-flash">
+      </div>
+      <div>
+        <label for="input-llm-base-url" class="field-label">Custom Base URL (optional)</label>
+        <input id="input-llm-base-url" class="civic-input" style="width:100%;" type="text" placeholder="https://...">
+      </div>
+      <div>
+        <label for="input-gemini-key" class="field-label">API Key (held in memory/session only)</label>
+        <input id="input-gemini-key" class="civic-input" style="width:100%;" type="password" placeholder="sk-... or AIza...">
+      </div>
+
+      <div id="byok-test-result" class="subtext"></div>
+
       <div class="modal-footer">
-        <button id="btn-dismiss-iso-detail" class="pill-btn primary">Close</button>
+        <button id="btn-clear-byok" type="button" class="pill-btn small">Clear Key</button>
+        <button id="btn-test-llm" type="button" class="pill-btn small secondary">Test Connection</button>
+        <button id="btn-save-byok" type="button" class="pill-btn small primary">Use for Session</button>
       </div>
     </div>
   </div>
 
-  <!-- LLM & BYOK CONFIGURATION MODAL -->
-  <div id="modal-byok" class="civic-modal-backdrop" role="dialog" aria-modal="true">
-    <div class="civic-modal">
-      <div class="modal-header">
-        <h3>Bring Your Own AI Key</h3>
-        <button class="modal-close" id="btn-close-byok">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p>Choose your provider and model per run. Keys stay in browser memory for this session only and are never saved to disk.</p>
+  <!-- Non-blocking Toast Stack -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-        <div class="form-group">
-          <label for="select-llm-provider">Provider</label>
-          <select id="select-llm-provider" class="civic-select full-width">
-            <option value="gemini">Google Gemini</option>
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="mistral">Mistral</option>
-            <option value="azure">Azure OpenAI</option>
-            <option value="kiconnect">University gateway (OpenAI-compatible)</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="input-llm-model">Model / Deployment Name</label>
-          <input type="text" id="input-llm-model" class="civic-input full-width" placeholder="e.g. gpt-4.1-mini or gemini-3.8-flash">
-        </div>
-
-        <div id="llm-base-url-group" class="form-group hidden">
-          <label for="input-llm-base-url">Endpoint Base URL</label>
-          <input type="url" id="input-llm-base-url" class="civic-input full-width" placeholder="https://your-resource.openai.azure.com/openai/deployments/...">
-        </div>
-
-        <div id="gemini-key-group" class="form-group">
-          <label for="input-gemini-key">API Key (per-run only, never stored on disk)</label>
-          <input type="password" id="input-gemini-key" class="civic-input full-width" autocomplete="off" placeholder="Paste your provider API key...">
-        </div>
-
-        <div id="kiconnect-info-group" class="form-group hidden">
-          <div class="kiconnect-banner">
-            <strong>Server / Gateway Configuration</strong>
-            <p id="kiconnect-status-text">Optional: leave key blank only if configured on server.</p>
-          </div>
-        </div>
-
-        <div id="llm-test-result" class="corpus-model-info hidden" style="margin-top: 10px;"></div>
-
-        <div class="checkbox-row" style="margin-top: 12px;">
-          <label>
-            <input type="checkbox" id="chk-save-local" checked>
-            <span>Keep key in this browser tab until closed</span>
-          </label>
-        </div>
-      </div>
-      <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end;">
-        <button id="btn-test-llm" class="pill-btn secondary" type="button">Test Connection</button>
-        <button id="btn-save-byok" class="pill-btn primary" type="button">Use for This Run</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- External bpmn-js Modeler Bundle -->
   <script src="https://unpkg.com/bpmn-js@17.11.1/dist/bpmn-modeler.production.min.js"></script>
-
-  <!-- Modular Scripts -->
-  <script src="/static/js/api.js?v=2.2.0"></script>
-  <script src="/static/js/bpmn-studio.js?v=2.2.0"></script>
-  <script src="/static/js/gap-dashboard.js?v=2.2.0"></script>
-  <script src="/static/js/start-guide.js?v=2.2.0"></script>
-  <script src="/static/js/app.js?v=2.2.0"></script>
+  <script src="/static/js/api.js?v=3.0.0"></script>
+  <script src="/static/js/bpmn-studio.js?v=3.0.0"></script>
+  <script src="/static/js/app.js?v=3.0.0"></script>
 </body>
 </html>

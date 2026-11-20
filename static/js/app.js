@@ -1,1306 +1,991 @@
 /**
- * PMGA Main Application Orchestrator
- * Pure vanilla JavaScript — Swiss editorial, non-blocking, accessible.
+ * PMGA Guided Municipal Workbench (v2)
+ * Single source of truth driven by GET /api/v1/projects/{id}/workspace & /turn.
  */
 
-document.addEventListener('DOMContentLoaded', async () => {
-  let activeProjectId = null;
-  let bpmnStudio = null;
-  let surveyPreviewStudio = null;
-  let allIsoControls = [];
-  let currentSurvey = null;
-  let focusedRowId = null;
-  let activeQuestionCode = null;
-  let cachedCorpusManifest = [];
-  let gdprPendingTimeout = null;
+(function () {
+  'use strict';
 
-  // --- UI Elements ---
-  const tabs = document.querySelectorAll('.tab-btn');
-  const panes = document.querySelectorAll('.tab-pane');
-  const projectSelect = document.getElementById('select-active-project');
-  const btnNewProjectToggle = document.getElementById('btn-new-project-toggle');
-  const newProjectInline = document.getElementById('new-project-inline');
-  const inputNewProjectTitle = document.getElementById('input-new-project-title');
-  const btnCreateProjectConfirm = document.getElementById('btn-create-project-confirm');
-  const btnCreateProjectCancel = document.getElementById('btn-create-project-cancel');
+  const STORAGE_PROJECT_KEY = 'pmga_active_project_id';
 
-  const btnHeaderExportExcel = document.getElementById('btn-header-export-excel');
-  const byokStatusBtn = document.getElementById('btn-byok-modal');
-  const byokLabel = document.getElementById('byok-label');
-  const modalByok = document.getElementById('modal-byok');
-  const btnCloseByok = document.getElementById('btn-close-byok');
-  const btnSaveByok = document.getElementById('btn-save-byok');
-  const btnTestLlm = document.getElementById('btn-test-llm');
-  const selectLlmProvider = document.getElementById('select-llm-provider');
-  const inputLlmModel = document.getElementById('input-llm-model');
-  const llmBaseUrlGroup = document.getElementById('llm-base-url-group');
-  const inputLlmBaseUrl = document.getElementById('input-llm-base-url');
-  const inputGeminiKey = document.getElementById('input-gemini-key');
-  const geminiKeyGroup = document.getElementById('gemini-key-group');
-  const kiconnectInfoGroup = document.getElementById('kiconnect-info-group');
-  const kiconnectStatusText = document.getElementById('kiconnect-status-text');
-  const llmTestResult = document.getElementById('llm-test-result');
-  const chkSaveLocal = document.getElementById('chk-save-local');
-  let providerRegistry = [];
+  const state = {
+    projects: [],
+    projectId: null,
+    workspace: null,
+    activeProcessId: null,
+    activeView: 'view-bpmn',
+    pendingFile: null,
+    pendingLogoDataUri: null,
+    clearLogoPending: false,
+    gapFilterStatus: 'ALL',
+    gdprConfirmArmed: false,
+    gdprTimer: null,
+    isSending: false
+  };
 
-  // Status Toast
-  const statusToast = document.getElementById('status-toast');
-  const toastMessage = document.getElementById('toast-message');
-  const toastDismiss = document.getElementById('toast-dismiss');
-  let toastTimer = null;
+  let studio = null;
 
-  // Benchmarks & Corpus
-  const benchmarksList = document.getElementById('benchmarks-list');
-  const selectCorpusModel = document.getElementById('select-corpus-model');
-  const selectCorpusStyle = document.getElementById('select-corpus-style');
-  const btnLoadCorpusStyle = document.getElementById('btn-load-corpus-style');
-  const btnLoadCorpusBpmn = document.getElementById('btn-load-corpus-bpmn');
-  const corpusModelInfo = document.getElementById('corpus-model-info');
-  const corpusArchetypeTag = document.getElementById('corpus-archetype-tag');
-  const corpusRefTag = document.getElementById('corpus-ref-tag');
-  const corpusNodesCount = document.getElementById('corpus-nodes-count');
-  const corpusEdgesCount = document.getElementById('corpus-edges-count');
+  function esc(val) {
+    return String(val ?? '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[ch]));
+  }
 
-  // Intake & Upload
-  const inputActual = document.getElementById('input-actual-process');
-  const inputFormal = document.getElementById('input-formal-policy');
-  const fileActual = document.getElementById('file-actual-process');
-  const fileFormal = document.getElementById('file-formal-policy');
-  const fileActualName = document.getElementById('file-actual-name');
-  const fileFormalName = document.getElementById('file-formal-name');
-  const btnGenerateBpmn = document.getElementById('btn-generate-bpmn');
+  function showToast(msg, kind = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = `toast-pill ${kind}`;
+    el.textContent = String(msg || '');
+    container.appendChild(el);
+    setTimeout(() => {
+      el.remove();
+    }, 4200);
+  }
 
-  // Survey Workspace Elements
-  const surveyWorkspace = document.getElementById('survey-workspace');
-  const surveyProgressBar = document.getElementById('survey-progress-bar');
-  const surveyProgressText = document.getElementById('survey-progress-text');
-  const surveyProgressLabel = document.getElementById('survey-progress-label');
-  const activeQuestionCard = document.getElementById('active-question-card');
-  const qPhaseBadge = document.getElementById('q-phase-badge');
-  const qRowBadge = document.getElementById('q-row-badge');
-  const qTitleText = document.getElementById('q-title-text');
-  const qChipsContainer = document.getElementById('q-chips-container');
-  const qChipsList = document.getElementById('q-chips-list');
-  const qAnswerInput = document.getElementById('q-answer-input');
-  const chkIsRepeatable = document.getElementById('chk-is-repeatable');
-  const btnSaveSurveyAnswer = document.getElementById('btn-save-survey-answer');
-  const btnSkipSurveyQuestion = document.getElementById('btn-skip-survey-question');
-  const surveyRowsTbody = document.getElementById('survey-rows-tbody');
-  const btnOpenFullStudio = document.getElementById('btn-open-full-studio');
-
-  // Tab 2 BPMN Studio Controls
-  const btnSaveBpmn = document.getElementById('btn-save-bpmn');
-  const btnExportBpmn = document.getElementById('btn-export-bpmn');
-  const btnExportSvg = document.getElementById('btn-export-svg');
-  const btnProceedToIso = document.getElementById('btn-proceed-to-iso');
-  const nodeWidthInput = document.getElementById('node-width-input');
-  const nodeHeightInput = document.getElementById('node-height-input');
-  const btnPresetCompact = document.getElementById('btn-preset-compact');
-  const btnPresetStandard = document.getElementById('btn-preset-standard');
-  const btnPresetWide = document.getElementById('btn-preset-wide');
-  const btnPresetLarge = document.getElementById('btn-preset-large');
-
-  // Telemetry Elements
-  const telemetryBar = document.getElementById('telemetry-bar');
-  const tSoundness = document.getElementById('t-soundness');
-  const tFaithfulness = document.getElementById('t-faithfulness');
-  const tDetail = document.getElementById('t-detail');
-
-  // Tab 3 ISO Controls & Gap Report
-  const filterIsoChapter = document.getElementById('filter-iso-chapter');
-  const filterIsoSearch = document.getElementById('filter-iso-search');
-  const isoTbody = document.getElementById('iso-controls-tbody');
-  const btnRunGapAnalysis = document.getElementById('btn-run-gap-analysis');
-  const modalIsoDetail = document.getElementById('modal-iso-detail');
-  const modalIsoTitle = document.getElementById('modal-iso-title');
-  const modalIsoBadge = document.getElementById('modal-iso-badge');
-  const modalIsoBody = document.getElementById('modal-iso-body');
-  const btnCloseIsoDetail = document.getElementById('btn-close-iso-detail');
-  const btnDismissIsoDetail = document.getElementById('btn-dismiss-iso-detail');
-  const btnExportExcel = document.getElementById('btn-export-excel-report');
-  const btnGdprPurge = document.getElementById('btn-gdpr-purge');
-
-  // ============================================================================
-  // NON-BLOCKING TOAST NOTIFICATIONS (Rule #4)
-  // ============================================================================
-  function showToast(message, type = 'info', durationMs = 4500) {
-    if (toastTimer) clearTimeout(toastTimer);
-    toastMessage.textContent = message;
-    statusToast.className = `status-toast toast-${type}`;
-    statusToast.classList.remove('hidden');
-
-    if (durationMs > 0) {
-      toastTimer = setTimeout(() => {
-        statusToast.classList.add('hidden');
-      }, durationMs);
+  function persistActiveProjectId(pid) {
+    state.projectId = pid;
+    if (pid) {
+      sessionStorage.setItem(STORAGE_PROJECT_KEY, pid);
+      localStorage.setItem(STORAGE_PROJECT_KEY, pid);
+      const url = new URL(window.location.href);
+      url.searchParams.set('project', pid);
+      window.history.replaceState({}, '', url.toString());
     }
   }
 
-  toastDismiss.addEventListener('click', () => {
-    if (toastTimer) clearTimeout(toastTimer);
-    statusToast.classList.add('hidden');
-  });
-
-  // ============================================================================
-  // START GUIDE: one endpoint answers "where am I", the card renders it
-  // ============================================================================
-  StartGuide.init({
-    go: (action) => {
-      switch (action) {
-        case 'upload':
-          switchTab('tab-intake');
-          fileActual.focus();
-          break;
-        case 'generate':
-          switchTab('tab-intake');
-          btnGenerateBpmn.focus();
-          break;
-        case 'survey':
-          switchTab('tab-intake');
-          qAnswerInput.focus();
-          break;
-        case 'byok':
-          modalByok.classList.add('open');
-          break;
-        default:
-          break;
-      }
-    }
-  });
-
-  // ============================================================================
-  // TAB NAVIGATION
-  // ============================================================================
-  function switchTab(tabId) {
-    tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
-    panes.forEach(p => p.classList.toggle('active', p.id === tabId));
-
-    if (tabId === 'tab-bpmn' && bpmnStudio && bpmnStudio.modeler) {
-      setTimeout(() => {
-        try {
-          const canvas = bpmnStudio.modeler.get('canvas');
-          if (canvas) {
-            canvas.resized();
-            canvas.zoom('fit-viewport');
-          }
-        } catch (e) {
-          console.warn('Canvas zoom on tab switch:', e);
-        }
-      }, 50);
-    }
-
-    if (tabId === 'tab-intake' && surveyPreviewStudio && surveyPreviewStudio.modeler) {
-      setTimeout(() => {
-        try {
-          const canvas = surveyPreviewStudio.modeler.get('canvas');
-          if (canvas) {
-            canvas.resized();
-            canvas.zoom('fit-viewport');
-          }
-        } catch (e) {
-          console.warn('Preview canvas zoom on tab switch:', e);
-        }
-      }, 50);
-    }
+  function readPreferredProjectId() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('project') || sessionStorage.getItem(STORAGE_PROJECT_KEY) || localStorage.getItem(STORAGE_PROJECT_KEY) || null;
   }
 
-  tabs.forEach(t => {
-    t.addEventListener('click', () => switchTab(t.dataset.tab));
-  });
+  // ---------------------------------------------------------------------------
+  // Project Loading & Switching
+  // ---------------------------------------------------------------------------
 
-  btnOpenFullStudio.addEventListener('click', () => switchTab('tab-bpmn'));
-
-  // ============================================================================
-  // LLM STATUS & MODAL ROUTING
-  // ============================================================================
-  function syncByokProviderFields(providerId) {
-    const spec = providerRegistry.find(p => p.id === providerId);
-    const needsBaseUrl = spec ? spec.needs_base_url : (providerId === 'azure' || providerId === 'kiconnect');
-    llmBaseUrlGroup.classList.toggle('hidden', !needsBaseUrl);
-
-    if (spec) {
-      inputLlmModel.placeholder = spec.default_model || 'Enter model or deployment name';
-      if (!inputLlmModel.value.trim() && spec.default_model) {
-        inputLlmModel.value = spec.default_model;
-      }
-      if (needsBaseUrl && !inputLlmBaseUrl.value.trim() && spec.base_url) {
-        inputLlmBaseUrl.value = spec.base_url;
-      }
-    }
-    geminiKeyGroup.classList.remove('hidden');
-    kiconnectInfoGroup.classList.toggle('hidden', providerId !== 'kiconnect');
-  }
-
-  async function updateLlmStatus() {
+  async function initProjects(preferredId = null) {
     try {
-      const status = await API.getLLMStatus();
-      providerRegistry = status.providers || [];
-      if (providerRegistry.length > 0) {
-        selectLlmProvider.innerHTML = '';
-        providerRegistry.forEach(p => {
-          const opt = document.createElement('option');
-          opt.value = p.id;
-          opt.textContent = p.default_model ? `${p.label} (${p.default_model})` : p.label;
-          selectLlmProvider.appendChild(opt);
-        });
+      let projects = await API.listProjects();
+      if (!Array.isArray(projects)) projects = [];
+      if (projects.length === 0) {
+        const created = await API.createProject('Municipal Discovery Assessment', 'Guided resilient digitization workbench');
+        projects = [created];
       }
+      state.projects = projects;
+      const targetId =
+        (preferredId && projects.some((p) => p.id === preferredId) ? preferredId : null) ||
+        (projects[0] ? projects[0].id : null);
 
-      const currentProvider = API.getProvider();
-      selectLlmProvider.value = currentProvider;
-      const spec = providerRegistry.find(p => p.id === currentProvider);
-      const key = API.getApiKey();
-      const savedModel = API.getModelName();
-      const savedBaseUrl = API.getBaseUrl();
-
-      inputGeminiKey.value = key;
-      inputLlmModel.value = savedModel || (spec ? spec.default_model : '');
-      inputLlmBaseUrl.value = savedBaseUrl || (spec ? spec.base_url : '');
-      syncByokProviderFields(currentProvider);
-
-      const serverConfigured =
-        (currentProvider === 'gemini' && status.gemini && status.gemini.configured) ||
-        (currentProvider === 'kiconnect' && status.kiconnect && status.kiconnect.configured);
-
-      if (key || serverConfigured) {
-        byokStatusBtn.classList.add('configured');
-        byokStatusBtn.classList.remove('unconfigured');
-        const labelName = spec ? spec.label : currentProvider;
-        const modelLabel = inputLlmModel.value.trim() || (spec ? spec.default_model : '');
-        byokLabel.textContent = modelLabel ? `${labelName} (${modelLabel})` : `${labelName}: Ready`;
-      } else {
-        byokStatusBtn.classList.add('unconfigured');
-        byokStatusBtn.classList.remove('configured');
-        byokLabel.textContent = 'Offline Mode (Set AI Key)';
-      }
-
-      if (currentProvider === 'kiconnect') {
-        kiconnectStatusText.textContent = status.kiconnect.configured
-          ? `Server gateway ready: ${status.kiconnect.model} | Pacing: ${status.min_interval_sec}s`
-          : 'Paste your endpoint URL and API key above.';
-      }
-    } catch (e) {
-      console.warn('Could not fetch LLM status:', e);
-    }
-  }
-
-  selectLlmProvider.addEventListener('change', (e) => {
-    const prov = e.target.value;
-    const spec = providerRegistry.find(p => p.id === prov);
-    inputLlmModel.value = spec ? (spec.default_model || '') : '';
-    inputLlmBaseUrl.value = spec ? (spec.base_url || '') : '';
-    llmTestResult.classList.add('hidden');
-    syncByokProviderFields(prov);
-  });
-
-  byokStatusBtn.addEventListener('click', () => {
-    llmTestResult.classList.add('hidden');
-    modalByok.classList.add('open');
-  });
-  btnCloseByok.addEventListener('click', () => modalByok.classList.remove('open'));
-
-  btnTestLlm.addEventListener('click', async () => {
-    const prov = selectLlmProvider.value;
-    const model = inputLlmModel.value.trim();
-    const baseUrl = inputLlmBaseUrl.value.trim();
-    const key = inputGeminiKey.value.trim();
-
-    btnTestLlm.disabled = true;
-    btnTestLlm.textContent = 'Testing...';
-    llmTestResult.classList.remove('hidden');
-    llmTestResult.textContent = 'Running single live connection check...';
-
-    try {
-      const res = await API.testLLMConnection({
-        provider: prov,
-        model_name: model,
-        base_url: baseUrl,
-        api_key: key
-      });
-      if (res.ok) {
-        llmTestResult.textContent = `OK (${res.latency_ms} ms): ${res.message}`;
-        llmTestResult.style.color = '#10b981';
-      } else {
-        llmTestResult.textContent = `Failed (${res.error_kind || 'error'}): ${res.message}`;
-        llmTestResult.style.color = '#ef4444';
+      renderProjectSelect();
+      if (targetId) {
+        await selectProject(targetId);
       }
     } catch (err) {
-      llmTestResult.textContent = `Error: ${err.message}`;
-      llmTestResult.style.color = '#ef4444';
-    } finally {
-      btnTestLlm.disabled = false;
-      btnTestLlm.textContent = 'Test Connection';
+      showToast(`Could not load projects: ${err.message}`, 'error');
     }
-  });
+  }
 
-  btnSaveByok.addEventListener('click', () => {
-    const prov = selectLlmProvider.value;
-    API.setProvider(prov);
-    API.setModelName(inputLlmModel.value.trim());
-    API.setBaseUrl(inputLlmBaseUrl.value.trim());
-    API.setApiKey(inputGeminiKey.value.trim(), chkSaveLocal.checked);
-    updateLlmStatus();
-    modalByok.classList.remove('open');
-    showToast('AI provider configuration active for this session (not written to disk).', 'success');
-  });
+  function renderProjectSelect() {
+    const sel = document.getElementById('select-project');
+    if (!sel) return;
+    sel.innerHTML = state.projects
+      .map((p) => `<option value="${esc(p.id)}">${esc(p.title)}</option>`)
+      .join('');
+    if (state.projectId) {
+      sel.value = state.projectId;
+    }
+  }
 
-  // ============================================================================
-  // PROJECT CREATION & SELECTION (Inline, No window.prompt)
-  // ============================================================================
-  btnNewProjectToggle.addEventListener('click', () => {
-    const isHidden = newProjectInline.classList.contains('hidden');
-    if (isHidden) {
-      newProjectInline.classList.remove('hidden');
-      inputNewProjectTitle.focus();
+  async function selectProject(projectId) {
+    if (!projectId) return;
+    persistActiveProjectId(projectId);
+    renderProjectSelect();
+    hideGapSlideover();
+    try {
+      const ws = await API.getWorkspace(projectId);
+      applyWorkspace(ws);
+      switchView('view-bpmn');
+    } catch (err) {
+      showToast(`Failed to load workspace: ${err.message}`, 'error');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Workspace Rendering
+  // ---------------------------------------------------------------------------
+
+  function applyWorkspace(ws) {
+    if (!ws) return;
+    const prevIds = new Set((state.workspace?.process_models || []).map((m) => m.id));
+    state.workspace = ws;
+
+    const models = ws.process_models || [];
+    const added = models.find((m) => !prevIds.has(m.id));
+    if (added && prevIds.size > 0) {
+      state.activeProcessId = added.id;
+    } else if (!state.activeProcessId || !models.some((m) => m.id === state.activeProcessId)) {
+      const primary = models.find((m) => m.is_primary) || models[0] || null;
+      state.activeProcessId = primary ? primary.id : null;
+    }
+
+    renderHeaderCounters();
+    renderLlmStatus();
+    renderMaturityStrip();
+    renderSessionFeed();
+    renderBpmnView();
+    renderArchitectureAndEvidence();
+    renderRemediationPlan();
+    renderDeliverablesControls();
+  }
+
+  function renderHeaderCounters() {
+    const ws = state.workspace || {};
+    const pCount = (ws.process_models || []).length;
+    const eCount = (ws.structure?.entities || []).length;
+    const openGaps = (ws.remediation_gaps || []).filter((g) => g.status !== 'RESOLVED').length;
+
+    const cp = document.getElementById('tab-count-processes');
+    const ce = document.getElementById('tab-count-entities');
+    const cg = document.getElementById('tab-count-gaps');
+    if (cp) cp.textContent = String(pCount);
+    if (ce) ce.textContent = String(eCount);
+    if (cg) cg.textContent = String(openGaps);
+  }
+
+  function renderLlmStatus() {
+    const hasKey = Boolean(API.getApiKey());
+    const provider = API.getProvider();
+    const badge = document.getElementById('byok-status-badge');
+    const text = document.getElementById('llm-mode-text');
+    const serverReady = Boolean(state.workspace?.llm_status?.configured);
+
+    if (hasKey) {
+      if (badge) badge.textContent = `${provider.toUpperCase()} Connected`;
+      if (text) text.innerHTML = `Connected via session BYOK (<strong>${esc(provider.toUpperCase())}</strong> &mdash; key held in RAM/session only).`;
+    } else if (serverReady) {
+      if (badge) badge.textContent = 'Server AI Active';
+      if (text) text.innerHTML = `Connected to configured institutional AI provider.`;
     } else {
-      newProjectInline.classList.add('hidden');
-    }
-  });
-
-  btnCreateProjectCancel.addEventListener('click', () => {
-    newProjectInline.classList.add('hidden');
-    inputNewProjectTitle.value = '';
-  });
-
-  async function handleInlineProjectCreate() {
-    const title = inputNewProjectTitle.value.trim();
-    if (!title) {
-      showToast('Please enter an assessment title.', 'error');
-      inputNewProjectTitle.focus();
-      return;
-    }
-    try {
-      const proj = await API.createProject(title);
-      newProjectInline.classList.add('hidden');
-      inputNewProjectTitle.value = '';
-      await refreshProjects(proj.id);
-      showToast(`Assessment created: ${title}`, 'success');
-    } catch (err) {
-      showToast('Failed to create project: ' + err.message, 'error');
+      if (badge) badge.textContent = 'Offline Rules';
+      if (text) text.innerHTML = `Running in <strong>Deterministic Civic Rules Mode</strong> (offline, zero external AI).`;
     }
   }
 
-  btnCreateProjectConfirm.addEventListener('click', handleInlineProjectCreate);
-  inputNewProjectTitle.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') handleInlineProjectCreate();
-    if (e.key === 'Escape') {
-      newProjectInline.classList.add('hidden');
-      inputNewProjectTitle.value = '';
-    }
-  });
+  function renderMaturityStrip() {
+    const strip = document.getElementById('maturity-strip');
+    const pctEl = document.getElementById('maturity-percent');
+    if (!strip) return;
+    const mp = state.workspace?.maturity_progress || {};
+    const stages = mp.stages || [];
+    const current = mp.current_stage || '';
+    if (pctEl) pctEl.textContent = `${mp.overall_percent || 0}%`;
 
-  async function refreshProjects(selectNewId = null) {
-    try {
-      const projects = await API.listProjects();
-      projectSelect.innerHTML = '<option value="">Select or Create an Assessment...</option>';
-      projects.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = `${p.title} (${p.created_at.slice(0, 10)})`;
-        projectSelect.appendChild(opt);
-      });
-
-      if (selectNewId) {
-        projectSelect.value = selectNewId;
-        activeProjectId = selectNewId;
-        await loadProjectData(selectNewId);
-      } else if (projects.length > 0 && !activeProjectId) {
-        projectSelect.value = projects[0].id;
-        activeProjectId = projects[0].id;
-        await loadProjectData(activeProjectId);
-      }
-    } catch (err) {
-      console.warn('Failed to load project list:', err);
-    }
+    strip.innerHTML = stages
+      .map((st) => {
+        const cls = st.done ? 'done' : (st.id === current ? 'current' : '');
+        return `<div class="maturity-step ${cls}" title="${esc(st.label)}">${esc(st.label)}</div>`;
+      })
+      .join('');
   }
 
-  projectSelect.addEventListener('change', async (e) => {
-    activeProjectId = e.target.value;
-    if (activeProjectId) {
-      await loadProjectData(activeProjectId);
+  function renderSessionFeed() {
+    const ws = state.workspace || {};
+    const turns = ws.session_turns || [];
+    const onboarding = document.getElementById('onboarding-cards');
+    const feed = document.getElementById('session-feed');
+    const chipsRow = document.getElementById('coach-quick-chips');
+    const scrollBox = document.getElementById('coach-scroll');
+
+    if (onboarding) {
+      onboarding.classList.toggle('hidden', turns.length > 0);
     }
-  });
+    if (!feed) return;
 
-  async function loadProjectData(projId) {
-    try {
-      const data = await API.getProject(projId);
-      if (!data) return;
-
-      const actualDoc = data.documents.find(d => d.doc_type === 'ACTUAL_PROCESS');
-      const formalDoc = data.documents.find(d => d.doc_type === 'FORMAL_POLICY');
-
-      if (actualDoc) inputActual.value = actualDoc.extracted_text;
-      if (formalDoc) inputFormal.value = formalDoc.extracted_text;
-
-      if (data.bpmn_model) {
-        if (bpmnStudio) {
-          try {
-            await bpmnStudio.loadXML(data.bpmn_model.bpmn_xml);
-            document.getElementById('bpmn-canvas-title').textContent = data.bpmn_model.title || 'Process Diagram';
-          } catch (err) {
-            console.warn('Background BPMN load deferred:', err);
-          }
-        }
-        if (surveyPreviewStudio) {
-          try {
-            await surveyPreviewStudio.loadXML(data.bpmn_model.bpmn_xml);
-          } catch (err) {
-            console.warn('Survey preview BPMN load deferred:', err);
-          }
-        }
-      }
-
-      // Load survey rows, entity structure, and start guide
-      await loadSurvey(projId);
-      await loadStructure(projId);
-      await StartGuide.refresh(projId);
-
-      // Load gaps if available
-      if (data.gaps && data.gaps.length > 0) {
-        const findings = data.gaps.map(g => ({
-          ...g,
-          actionable_todos: JSON.parse(g.actionable_todos_json || '[]'),
-          roles_to_consult: JSON.parse(g.roles_to_consult_json || '[]'),
-          compensating_controls: JSON.parse(g.compensating_controls_json || '[]')
-        }));
-        GapDashboard.render({ findings, compliance_score_percent: 75, executive_summary: 'Loaded previous assessment findings.' });
-      }
-    } catch (err) {
-      showToast('Error loading project: ' + err.message, 'error');
-    }
-  }
-
-  // ============================================================================
-  // VERBATIM SQL SURVEY & PRELEAD CONCEPT INTERACTION
-  // ============================================================================
-  async function loadSurvey(projId) {
-    if (!projId) return;
-    try {
-      currentSurvey = await API.getSurvey(projId);
-      renderSurveyState(currentSurvey);
-    } catch (err) {
-      console.warn('Survey state fetch deferred:', err);
-    }
-  }
-
-  function renderSurveyState(survey) {
-    if (!survey) return;
-
-    // 1. Progress Bar (fields come straight from the survey state)
-    const progress = {
-      total_slots: survey.total_slots || 0,
-      answered_slots: survey.filled_slots || 0,
-      percent: survey.completion_percent || 0,
-      rows_count: survey.total_rows || 0
-    };
-    surveyProgressBar.style.width = `${progress.percent}%`;
-    surveyProgressText.textContent = `${progress.percent}% Complete (${progress.answered_slots}/${progress.total_slots} slots)`;
-    surveyProgressLabel.textContent = `${progress.rows_count} item${progress.rows_count === 1 ? '' : 's'} recorded in SQLite survey table`;
-
-    // 2. Table Rows
-    const rows = survey.rows || [];
-    if (rows.length === 0) {
-      surveyRowsTbody.innerHTML = '<tr><td colspan="5" class="empty-state">No rows ingested yet. Drop an Excel file or paste process notes above.</td></tr>';
-    } else {
-      surveyRowsTbody.innerHTML = rows.map((r, idx) => {
-        const isFocused = focusedRowId === r.id;
-        const kindBadge = `<span class="row-badge">${escapeHtml(r.q02_entry_kind || 'unset')}</span>`;
-        const linkedProcess = r.q03_process_name
-          ? escapeHtml(r.q03_process_name)
-          : '<em style="color:var(--ink-muted)">No link yet</em>';
+    feed.innerHTML = turns
+      .map((t) => {
+        const isUser = t.role === 'user';
+        const patch = t.patch_summary || {};
+        const changes = Array.isArray(patch.what_changed) ? patch.what_changed : [];
+        const changesHtml = changes.length
+          ? `<div class="what-changed-list">${changes.map((c) => `<span class="change-pill">${esc(c)}</span>`).join('')}</div>`
+          : '';
         return `
-          <tr class="clickable-row ${isFocused ? 'row-focused' : ''}" data-rowid="${escapeHtml(r.id)}">
-            <td><strong>#${idx + 1}</strong></td>
-            <td><strong>${escapeHtml(r.q01_raw_entry || '')}</strong></td>
-            <td>${kindBadge}</td>
-            <td>${linkedProcess}</td>
-            <td><span class="phase-badge">${r.slots_filled || 0}/${r.slots_total || 0}</span></td>
-          </tr>
+          <div class="turn-bubble ${isUser ? 'user' : 'coach'}">
+            <div class="turn-meta">
+              <strong>${isUser ? 'You' : 'PMGA Guide'}</strong>
+              <span>${esc(t.input_kind || 'chat')}</span>
+            </div>
+            <div class="turn-body">${esc(t.content)}</div>
+            ${changesHtml}
+          </div>
         `;
-      }).join('');
+      })
+      .join('');
 
-      // Row click listener to focus questions on that specific entry.
-      // Row ids are UUID strings and must never pass through numeric parsing.
-      surveyRowsTbody.querySelectorAll('.clickable-row').forEach(rowEl => {
-        rowEl.addEventListener('click', () => {
-          focusedRowId = rowEl.dataset.rowid;
-          renderSurveyState(currentSurvey);
-        });
-      });
-    }
-
-    // 3. Active Question Card
-    renderActiveQuestionCard(survey);
-  }
-
-  function renderActiveQuestionCard(survey) {
-    const rows = survey.rows || [];
-    if (rows.length === 0) {
-      qPhaseBadge.textContent = 'Phase: Standby';
-      qRowBadge.textContent = 'No Entries';
-      qTitleText.textContent = 'Upload or paste process evidence above to start the guided discovery interview.';
-      qChipsContainer.classList.add('hidden');
-      qAnswerInput.value = '';
-      qAnswerInput.disabled = true;
-      btnSaveSurveyAnswer.disabled = true;
-      btnSkipSurveyQuestion.disabled = true;
-      return;
-    }
-
-    qAnswerInput.disabled = false;
-    btnSaveSurveyAnswer.disabled = false;
-    btnSkipSurveyQuestion.disabled = false;
-
-    // Pick active question: the focused row carries its own next unanswered
-    // question straight from the backend, so the frontend never guesses
-    // question codes that may not exist.
-    let activeQuestion = null;
-    let focusedRow = null;
-
-    if (focusedRowId) {
-      focusedRow = rows.find(r => r.id === focusedRowId);
-    }
-    if (!focusedRow && rows.length > 0) {
-      focusedRow = rows[0];
-      focusedRowId = focusedRow.id;
-    }
-
-    if (focusedRow) {
-      const rowQuestion = focusedRow.next_question;
-      if (rowQuestion) {
-        activeQuestion = {
-          row_id: rowQuestion.row_id || focusedRow.id,
-          raw_entry: rowQuestion.entry || focusedRow.q01_raw_entry,
-          code: rowQuestion.question_code,
-          phase: rowQuestion.phase,
-          text: rowQuestion.question_text,
-          options: rowQuestion.options || []
-        };
-      }
-    }
-
-    if (!activeQuestion) {
-      // All questions for this row or dataset answered
-      qPhaseBadge.textContent = 'Phase: Discovery Complete';
-      qRowBadge.textContent = focusedRow ? escapeHtml(focusedRow.q01_raw_entry || 'Entry') : 'All Complete';
-      qTitleText.textContent = `All questions answered for '${focusedRow ? focusedRow.q01_raw_entry : 'this entry'}'. You can review the live diagram or export to Excel.`;
-      qChipsContainer.classList.add('hidden');
-      qAnswerInput.value = '';
-      activeQuestionCode = null;
-      return;
-    }
-
-    activeQuestionCode = activeQuestion.code;
-    focusedRowId = activeQuestion.row_id;
-    qPhaseBadge.textContent = `Phase: ${activeQuestion.phase || 'Prozesserhebung'}`;
-    qRowBadge.textContent = `Focused: ${activeQuestion.raw_entry || 'Entry'}`;
-    qTitleText.textContent = activeQuestion.text;
-
-    // Render accepted concept chips the backend merged into the question's options
-    const preleadList = activeQuestion.options || [];
-    if (preleadList.length > 0) {
-      qChipsContainer.classList.remove('hidden');
-      qChipsList.innerHTML = preleadList.map(concept => `
-        <button type="button" class="chip-btn" data-val="${escapeHtml(concept)}">${escapeHtml(concept)}</button>
-      `).join('');
-
-      qChipsList.querySelectorAll('.chip-btn').forEach(btn => {
+    const lastCoach = [...turns].reverse().find((t) => t.role === 'coach');
+    const quickChoices = lastCoach?.patch_summary?.quick_choices || [];
+    if (chipsRow) {
+      chipsRow.innerHTML = quickChoices
+        .map((q) => `<button type="button" class="quick-chip" data-chip-text="${esc(q)}">${esc(q)}</button>`)
+        .join('');
+      chipsRow.querySelectorAll('.quick-chip').forEach((btn) => {
         btn.addEventListener('click', () => {
-          qAnswerInput.value = btn.dataset.val;
-          qAnswerInput.focus();
-        });
-      });
-    } else {
-      qChipsContainer.classList.add('hidden');
-      qChipsList.innerHTML = '';
-    }
-
-    // Set input placeholder
-    qAnswerInput.value = '';
-    qAnswerInput.placeholder = `Type verbatim answer for '${activeQuestion.raw_entry}'...`;
-    chkIsRepeatable.checked = false;
-    qAnswerInput.focus();
-  }
-
-  // Save Survey Answer
-  btnSaveSurveyAnswer.addEventListener('click', async () => {
-    if (!activeProjectId || !focusedRowId || !activeQuestionCode) {
-      showToast('No active question selected.', 'info');
-      return;
-    }
-
-    let answer = qAnswerInput.value.trim();
-    if (!answer) {
-      showToast('Please type an answer or click Skip.', 'info');
-      qAnswerInput.focus();
-      return;
-    }
-
-    // If repeatable checkbox checked and answering q13
-    if (chkIsRepeatable.checked && activeQuestionCode === 'q13_is_repeatable') {
-      answer = '1';
-    }
-
-    btnSaveSurveyAnswer.disabled = true;
-    btnSaveSurveyAnswer.textContent = 'Saving...';
-
-    try {
-      const res = await API.answerSurveyQuestion(activeProjectId, focusedRowId, activeQuestionCode, answer, true);
-
-      // If repeatable checkbox was checked regardless of current question, update q13 too
-      if (chkIsRepeatable.checked && activeQuestionCode !== 'q13_is_repeatable') {
-        await API.answerSurveyQuestion(activeProjectId, focusedRowId, 'q13_is_repeatable', '1', false);
-      }
-
-      // Update both canvases if live BPMN XML returned
-      if (res.bpmn_xml) {
-        if (surveyPreviewStudio) {
-          try { await surveyPreviewStudio.loadXML(res.bpmn_xml); } catch (e) { console.warn(e); }
-        }
-        if (bpmnStudio) {
-          try { await bpmnStudio.loadXML(res.bpmn_xml); } catch (e) { console.warn(e); }
-        }
-      }
-
-      await loadSurvey(activeProjectId);
-      await loadStructure(activeProjectId);
-      await StartGuide.refresh(activeProjectId);
-      showToast('Answer recorded verbatim. Diagram & structure updated.', 'success', 2500);
-    } catch (err) {
-      showToast('Failed to record answer: ' + err.message, 'error');
-    } finally {
-      btnSaveSurveyAnswer.disabled = false;
-      btnSaveSurveyAnswer.textContent = 'Save & Next Question →';
-    }
-  });
-
-  // Skip Question (Non-blocking cycle)
-  btnSkipSurveyQuestion.addEventListener('click', () => {
-    if (!currentSurvey || !currentSurvey.rows || currentSurvey.rows.length === 0) return;
-    const rows = currentSurvey.rows;
-    const currentIndex = rows.findIndex(r => r.id === focusedRowId);
-    const nextIndex = (currentIndex + 1) % rows.length;
-    focusedRowId = rows[nextIndex].id;
-    renderSurveyState(currentSurvey);
-    showToast('Skipped to next item.', 'info', 1800);
-  });
-
-  // Enter key on answer input triggers save
-  qAnswerInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      btnSaveSurveyAnswer.click();
-    }
-  });
-
-  // ============================================================================
-  // FILE UPLOADS & INGESTION (Multi-sheet Excel, docx, pdf, bpmn)
-  // ============================================================================
-  fileActual.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    fileActualName.textContent = file.name;
-
-    if (!activeProjectId) {
-      const proj = await API.createProject(`Assessment: ${file.name}`);
-      await refreshProjects(proj.id);
-    }
-
-    if (file.name.endsWith('.bpmn') || file.name.endsWith('.xml')) {
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const xmlText = ev.target.result;
-        try {
-          const res = await API.parseExternalBPMN(xmlText, file.name);
-          inputActual.value = res.text_styles.shorthand || res.text_styles.formal;
-          await API.saveBPMN(activeProjectId, xmlText);
-          if (bpmnStudio) await bpmnStudio.loadXML(xmlText);
-          if (surveyPreviewStudio) await surveyPreviewStudio.loadXML(xmlText);
-          document.getElementById('bpmn-canvas-title').textContent = `${res.title} (Parsed from .bpmn)`;
-          await loadSurvey(activeProjectId);
-          showToast('BPMN file parsed and loaded.', 'success');
-        } catch (err) {
-          showToast('Failed to parse uploaded BPMN XML: ' + err.message, 'error');
-        }
-      };
-      reader.readAsText(file);
-      return;
-    }
-
-    showToast(`Uploading and extracting '${file.name}'...`, 'info', 2000);
-    try {
-      const res = await API.uploadDocument(activeProjectId, 'ACTUAL_PROCESS', file);
-      inputActual.value = res.pii_report.has_pii ? res.pii_report.redacted_text : inputActual.value;
-      await loadSurvey(activeProjectId);
-      await loadStructure(activeProjectId);
-      await StartGuide.refresh(activeProjectId);
-      const proven = (res.evidence_extracted && res.evidence_extracted.assessments_proven) || 0;
-      showToast(`'${file.name}' ingested (${res.survey_rows_created} rows, ${proven} proven citations).`, 'success');
-    } catch (err) {
-      showToast('Upload error: ' + err.message, 'error');
-    }
-  });
-
-  fileFormal.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    fileFormalName.textContent = file.name;
-
-    if (!activeProjectId) {
-      const proj = await API.createProject(`Assessment: ${file.name}`);
-      await refreshProjects(proj.id);
-    }
-
-    try {
-      const res = await API.uploadDocument(activeProjectId, 'FORMAL_POLICY', file);
-      inputFormal.value = res.pii_report.has_pii ? res.pii_report.redacted_text : inputFormal.value;
-      await loadStructure(activeProjectId);
-      await StartGuide.refresh(activeProjectId);
-      const proven = (res.evidence_extracted && res.evidence_extracted.assessments_proven) || 0;
-      showToast(`Directive '${file.name}' ingested (${proven} proven citations).`, 'success');
-    } catch (err) {
-      showToast('Upload error: ' + err.message, 'error');
-    }
-  });
-
-  // ============================================================================
-  // BPMN GENERATION & VERIFICATION PIPELINE
-  // ============================================================================
-  btnGenerateBpmn.addEventListener('click', async () => {
-    const processText = inputActual.value.trim();
-    if (!processText) {
-      showToast('Please enter process notes, drop an Excel file, or pick a reference benchmark.', 'error');
-      return;
-    }
-
-    if (!activeProjectId) {
-      const proj = await API.createProject('Process Assessment');
-      await refreshProjects(proj.id);
-    }
-
-    btnGenerateBpmn.disabled = true;
-    btnGenerateBpmn.textContent = 'Generating & Mathematically Verifying BPMN Graph...';
-
-    try {
-      const res = await API.generateBPMN(activeProjectId, processText, inputFormal.value.trim());
-      if (bpmnStudio) {
-        await bpmnStudio.loadXML(res.bpmn_xml);
-      }
-      if (surveyPreviewStudio) {
-        await surveyPreviewStudio.loadXML(res.bpmn_xml);
-      }
-
-      // Display telemetry scorecard
-      if (res.telemetry) {
-        telemetryBar.classList.remove('hidden');
-        tSoundness.textContent = `${Math.round(res.telemetry.structural_soundness_score * 100)}%`;
-        tFaithfulness.textContent = `${Math.round(res.telemetry.faithfulness_score * 100)}%`;
-        const defects = res.telemetry.structural_defects.length;
-        tDetail.textContent = defects === 0 ? 'Mathematically sound. Zero structural deadlocks.' : `Warnings: ${res.telemetry.structural_defects[0]}`;
-      }
-
-      await loadSurvey(activeProjectId);
-      await StartGuide.refresh(activeProjectId);
-      showToast('BPMN diagram generated and verified.', 'success');
-    } catch (err) {
-      showToast('Error generating BPMN: ' + err.message, 'error');
-    } finally {
-      btnGenerateBpmn.disabled = false;
-      btnGenerateBpmn.textContent = 'Generate Diagram & Start Guided Survey →';
-    }
-  });
-
-  // ============================================================================
-  // BENCHMARKS & CORPUS WORKBENCH
-  // ============================================================================
-  async function loadBenchmarks() {
-    try {
-      const bms = await API.getBenchmarks();
-      benchmarksList.innerHTML = bms.map(b => `
-        <div class="bm-card" data-bmid="${b.id}">
-          <h4>${escapeHtml(b.title)}</h4>
-          <p>${escapeHtml(b.description)}</p>
-          <div class="bm-meta">Ref: ${escapeHtml(b.reference_standard || 'ISO/IEC 27002')}</div>
-          <div class="bm-load-btn">Load Case Study &rarr;</div>
-        </div>
-      `).join('');
-
-      document.querySelectorAll('.bm-card').forEach(card => {
-        card.addEventListener('click', async () => {
-          const bmId = card.dataset.bmid;
-          card.style.opacity = '0.5';
-          try {
-            const res = await API.loadBenchmark(bmId);
-            await refreshProjects(res.project_id);
-            showToast('Benchmark case study loaded into assessment.', 'success');
-          } catch (err) {
-            showToast('Failed to load benchmark: ' + err.message, 'error');
-          } finally {
-            card.style.opacity = '1';
+          const msgBox = document.getElementById('input-turn-message');
+          if (msgBox) {
+            msgBox.value = btn.dataset.chipText || '';
+            handleSendTurn();
           }
         });
       });
-    } catch (err) {
-      console.warn('Could not load benchmarks:', err);
+    }
+
+    if (scrollBox) {
+      scrollBox.scrollTop = scrollBox.scrollHeight;
     }
   }
 
-  async function loadCorpusWorkbench() {
-    try {
-      cachedCorpusManifest = await API.getCorpusManifest();
-      selectCorpusModel.innerHTML = '<option value="">-- Choose Ground-Truth Archetype (12 Models) --</option>' +
-        cachedCorpusManifest.map(m => `<option value="${m.id}">[${m.archetype}] ${escapeHtml(m.title)}</option>`).join('');
+  async function renderBpmnView() {
+    const ws = state.workspace || {};
+    const models = ws.process_models || [];
+    const gaps = ws.remediation_gaps || [];
+    const sel = document.getElementById('select-process-model');
+    const banner = document.getElementById('bpmn-description-banner');
 
-      selectCorpusModel.addEventListener('change', () => {
-        const m = cachedCorpusManifest.find(item => item.id === selectCorpusModel.value);
-        if (m) {
-          corpusArchetypeTag.textContent = m.archetype;
-          corpusRefTag.textContent = m.reference;
-          corpusNodesCount.textContent = m.node_count;
-          corpusEdgesCount.textContent = m.edge_count;
-          corpusModelInfo.style.display = 'block';
-        } else {
-          corpusModelInfo.style.display = 'none';
-        }
+    if (sel) {
+      if (models.length === 0) {
+        sel.innerHTML = '<option value="">No processes yet</option>';
+      } else {
+        sel.innerHTML = models
+          .map((m) => {
+            const gCount = gaps.filter((g) => g.status !== 'RESOLVED' && (!g.process_model_id || g.process_model_id === m.id)).length;
+            return `<option value="${esc(m.id)}">${esc(m.title)} (v${m.version} &bull; ${gCount} steps)</option>`;
+          })
+          .join('');
+        if (state.activeProcessId) sel.value = state.activeProcessId;
+      }
+    }
+
+    const activeModel = models.find((m) => m.id === state.activeProcessId) || models[0] || null;
+    if (!activeModel) {
+      if (banner) {
+        banner.textContent = 'Start a conversation on the left or upload a spreadsheet / .bpmn file to generate your first Process Map.';
+      }
+      if (studio) {
+        await studio.loadXML('');
+      }
+      return;
+    }
+
+    if (banner) {
+      banner.innerHTML = `<strong>${esc(activeModel.title)}:</strong> ${esc(activeModel.description_text || 'Plain-English process description ready after extraction.')}`;
+    }
+
+    if (studio && activeModel.bpmn_xml) {
+      try {
+        await studio.loadXML(activeModel.bpmn_xml);
+        const procGaps = gaps.filter((g) => !g.process_model_id || g.process_model_id === activeModel.id);
+        studio.setGapBadges(procGaps, (nodeId, matchingGaps) => {
+          openGapSlideover(nodeId, matchingGaps);
+        });
+      } catch (err) {
+        showToast(`Could not render BPMN canvas: ${err.message}`, 'error');
+      }
+    }
+  }
+
+  function renderArchitectureAndEvidence() {
+    const ws = state.workspace || {};
+    const treeEl = document.getElementById('architecture-tree');
+    const evEl = document.getElementById('evidence-ledger');
+    const entities = ws.structure?.entities || [];
+    const evidence = ws.evidence_items || [];
+
+    if (treeEl) {
+      if (entities.length === 0) {
+        treeEl.innerHTML = '<p class="subtext">No systems, roles, or processes mapped yet. Chat on the left or upload an Excel asset list.</p>';
+      } else {
+        treeEl.innerHTML = entities
+          .map((e) => {
+            const decl = e.declared_protection || {};
+            const inh = e.inherited_protection || {};
+            const hasInh = inh && (inh.confidentiality || inh.integrity || inh.availability || inh.rto || inh.mtpd);
+            const inhPill = hasInh
+              ? `<div class="inherited-pill">Inherited (BSI Maximumprinzip): C=${esc(inh.confidentiality || '-')} &bull; I=${esc(inh.integrity || '-')} &bull; A=${esc(inh.availability || '-')} &bull; RTO=${esc(inh.rto || '-')} &bull; MTPD=${esc(inh.mtpd || '-')}${Array.isArray(inh.from_processes) && inh.from_processes.length ? ` (from ${esc(inh.from_processes.join(', '))})` : ''}</div>`
+              : '';
+            const declSummary = (decl.confidentiality || decl.integrity || decl.availability)
+              ? `<div class="subtext" style="margin-top:4px;">Declared: C=${esc(decl.confidentiality || '-')} / I=${esc(decl.integrity || '-')} / A=${esc(decl.availability || '-')}</div>`
+              : '';
+            return `
+              <div class="entity-card">
+                <div class="entity-card-top">
+                  <div>
+                    <span class="badge-soft">${esc(e.entity_type)}</span>
+                    <strong>${esc(e.name)}</strong>
+                  </div>
+                  <span class="subtext">${e.owner_role ? `Owner: ${esc(e.owner_role)}` : 'Owner unset'}</span>
+                </div>
+                ${declSummary}
+                ${inhPill}
+              </div>
+            `;
+          })
+          .join('');
+      }
+    }
+
+    if (evEl) {
+      if (evidence.length === 0) {
+        evEl.innerHTML = '<p class="subtext">Upload a handbook, policy, AGB, or SBOM to track verified vs. contradicted claims.</p>';
+      } else {
+        evEl.innerHTML = evidence
+          .map((ev) => {
+            const cls = ev.status === 'CONTRADICTED' ? 'contradicted' : '';
+            const badgeCls = ev.status === 'CONTRADICTED' ? 'coral' : (ev.status === 'USER_CONFIRMED' ? 'sage' : 'amber');
+            return `
+              <div class="evidence-row ${cls}">
+                <div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <span><code>${esc(ev.req_id)}</code> <strong>${esc(ev.claim_text)}</strong></span>
+                  <span class="badge-soft ${badgeCls}">${esc(ev.status)}</span>
+                </div>
+                <div class="subtext" style="margin-top:3px;">Source: ${esc(ev.source_location || 'document')}</div>
+                ${ev.source_quote ? `<blockquote class="evidence-quote">${esc(ev.source_quote)}</blockquote>` : ''}
+              </div>
+            `;
+          })
+          .join('');
+      }
+    }
+  }
+
+  function renderRemediationPlan() {
+    const container = document.getElementById('remediation-groups');
+    if (!container) return;
+    const allGaps = state.workspace?.remediation_gaps || [];
+    const filtered = state.gapFilterStatus === 'ALL'
+      ? allGaps
+      : allGaps.filter((g) => g.status === state.gapFilterStatus);
+
+    if (filtered.length === 0) {
+      container.innerHTML = '<p class="subtext">No remediation items match the selected filter.</p>';
+      return;
+    }
+
+    const buckets = [
+      { key: 'QUICK_WIN', title: 'Quick Wins (1–2 Days)' },
+      { key: 'BEFORE_DIGITALIZATION', title: 'Before Digitalization' },
+      { key: 'ONGOING', title: 'Ongoing Hygiene & Documentation' }
+    ];
+
+    container.innerHTML = buckets
+      .map((b) => {
+        const items = filtered.filter((g) => g.priority_bucket === b.key);
+        if (items.length === 0) return '';
+        return `
+          <div class="gap-bucket-title">${esc(b.title)} (${items.length})</div>
+          ${items.map((g) => renderGapCardHtml(g)).join('')}
+        `;
+      })
+      .join('');
+
+    container.querySelectorAll('[data-gap-status-btn]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        handleUpdateGapStatus(btn.dataset.gapId, btn.dataset.gapStatusBtn);
       });
+    });
 
-      btnLoadCorpusStyle.addEventListener('click', async () => {
-        const modelId = selectCorpusModel.value;
-        if (!modelId) {
-          showToast('Please select a Ground-Truth Model from the dropdown first.', 'error');
-          return;
+    container.querySelectorAll('[data-inspect-gap-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const gid = btn.dataset.inspectGapId;
+        const gap = allGaps.find((x) => x.id === gid);
+        if (!gap) return;
+        if (gap.process_model_id) {
+          state.activeProcessId = gap.process_model_id;
         }
-        const styleKey = selectCorpusStyle.value;
-        btnLoadCorpusStyle.textContent = 'Loading...';
-        try {
-          const detail = await API.getCorpusModel(modelId);
-          const styleText = detail.text_styles[styleKey] || detail.text_styles.formal;
-          inputActual.value = styleText;
-          inputFormal.value = `# FORMAL REFERENCE STANDARD (${detail.title})\nStandard / Regulation: ${detail.reference}\nArchetype: ${detail.archetype}\nGround-Truth Element Constraints: Exactly ${detail.graph.nodes.length} nodes, ${detail.graph.edges.length} edges.`;
-          showToast(`Loaded ${styleKey} linguistic style for ${detail.title}.`, 'success');
-        } catch (e) {
-          showToast('Failed to load model style: ' + e.message, 'error');
-        } finally {
-          btnLoadCorpusStyle.textContent = 'Load Style into Notes';
-        }
+        switchView('view-bpmn');
+        renderBpmnView().then(() => {
+          const nid = (gap.affected_node_ids || [])[0] || '';
+          if (studio && nid) studio.focusNode(nid);
+          openGapSlideover(nid || 'process', [gap]);
+        });
       });
-
-      btnLoadCorpusBpmn.addEventListener('click', async () => {
-        const modelId = selectCorpusModel.value;
-        if (!modelId) {
-          showToast('Please select a Ground-Truth Model from the dropdown first.', 'error');
-          return;
-        }
-        btnLoadCorpusBpmn.textContent = 'Loading Canvas...';
-        try {
-          const detail = await API.getCorpusModel(modelId);
-          if (!activeProjectId) {
-            const proj = await API.createProject(`Corpus Ground-Truth: ${detail.title}`);
-            await refreshProjects(proj.id);
-          }
-          await API.saveBPMN(activeProjectId, detail.bpmn_xml);
-          if (bpmnStudio) await bpmnStudio.loadXML(detail.bpmn_xml);
-          if (surveyPreviewStudio) await surveyPreviewStudio.loadXML(detail.bpmn_xml);
-          document.getElementById('bpmn-canvas-title').textContent = `${detail.title} (Ground Truth G*)`;
-          switchTab('tab-bpmn');
-          showToast('Ground-truth BPMN loaded to Studio.', 'success');
-        } catch (e) {
-          showToast('Failed to load Ground-Truth BPMN: ' + e.message, 'error');
-        } finally {
-          btnLoadCorpusBpmn.textContent = 'View Ground-Truth BPMN →';
-        }
-      });
-    } catch (e) {
-      console.warn('Failed to load corpus manifest:', e);
-    }
-  }
-
-  // ============================================================================
-  // STUDIO TOOLS (Box Resizing & Exports)
-  // ============================================================================
-  function applyResize(w, h) {
-    if (bpmnStudio && bpmnStudio.resizeSelectedElement(w, h)) {
-      nodeWidthInput.value = w;
-      nodeHeightInput.value = h;
-      showToast(`Resized element to ${w}x${h} px.`, 'info', 1500);
-    } else if (!bpmnStudio.selectedElement) {
-      showToast('Click a task or element on the canvas to select it first.', 'info');
-    }
-  }
-
-  nodeWidthInput.addEventListener('change', () => applyResize(nodeWidthInput.value, nodeHeightInput.value));
-  nodeHeightInput.addEventListener('change', () => applyResize(nodeWidthInput.value, nodeHeightInput.value));
-  btnPresetCompact.addEventListener('click', () => applyResize(100, 60));
-  btnPresetStandard.addEventListener('click', () => applyResize(130, 80));
-  btnPresetWide.addEventListener('click', () => applyResize(180, 80));
-  btnPresetLarge.addEventListener('click', () => applyResize(200, 110));
-
-  btnSaveBpmn.addEventListener('click', async () => {
-    if (!bpmnStudio || !activeProjectId) return;
-    const xml = await bpmnStudio.exportXML();
-    await API.saveBPMN(activeProjectId, xml);
-    showToast('BPMN 2.0 diagram saved as a new version.', 'success');
-  });
-
-  btnExportBpmn.addEventListener('click', async () => {
-    if (!bpmnStudio) return;
-    const xml = await bpmnStudio.exportXML();
-    const blob = new Blob([xml], { type: 'application/xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `PMGA_Process_Model_${activeProjectId || 'export'}.bpmn`;
-    a.click();
-    showToast('Downloaded .bpmn XML.', 'info', 2000);
-  });
-
-  btnExportSvg.addEventListener('click', async () => {
-    if (!bpmnStudio) return;
-    const svg = await bpmnStudio.exportSVG();
-    const blob = new Blob([svg], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `PMGA_Process_Diagram_${activeProjectId || 'export'}.svg`;
-    a.click();
-    showToast('Downloaded .svg diagram.', 'info', 2000);
-  });
-
-  btnProceedToIso.addEventListener('click', () => switchTab('tab-iso'));
-
-  // ============================================================================
-  // ISO CONTROLS & GAP ANALYSIS
-  // ============================================================================
-  async function loadIsoControls() {
-    try {
-      const data = await API.getISOControls();
-      allIsoControls = data.controls || [];
-      renderIsoTable(allIsoControls);
-    } catch (err) {
-      console.warn('Failed to load ISO controls:', err);
-    }
-  }
-
-  function renderIsoTable(controls) {
-    isoTbody.innerHTML = controls.map(c => `
-      <tr>
-        <td><span class="control-id-badge">${escapeHtml(c.control_id)}</span></td>
-        <td><strong>${escapeHtml(c.title)}</strong></td>
-        <td>${escapeHtml(c.chapter)}</td>
-        <td>${escapeHtml(c.requirement)}</td>
-        <td>
-          <button class="pill-btn secondary btn-inspect-control" data-cid="${c.control_id}" style="padding: 4px 8px; font-size: 0.75rem;">Inspect Details</button>
-        </td>
-      </tr>
-    `).join('');
-
-    isoTbody.querySelectorAll('.btn-inspect-control').forEach(btn => {
-      btn.addEventListener('click', () => openIsoDetailModal(btn.dataset.cid));
     });
   }
 
-  function openIsoDetailModal(controlId) {
-    const c = allIsoControls.find(x => x.control_id === controlId);
-    if (!c) return;
+  function renderGapCardHtml(g) {
+    const sevCls = `sev-${String(g.severity || 'INFO').toLowerCase()}`;
+    const driftHtml = g.policy_vs_reality
+      ? `<div class="policy-drift-box"><strong>Policy vs. Reality:</strong> ${esc(g.policy_vs_reality)}</div>`
+      : '';
+    const stepsHtml = Array.isArray(g.action_steps) && g.action_steps.length
+      ? `<ol class="gap-steps-list">${g.action_steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>`
+      : '';
+    const compHtml = Array.isArray(g.compensating_options) && g.compensating_options.length
+      ? `<div class="subtext" style="margin-top:4px;"><strong>Compensating Safeguards:</strong> ${esc(g.compensating_options.join(' • '))}</div>`
+      : '';
 
-    modalIsoBadge.textContent = c.control_id;
-    modalIsoTitle.textContent = c.title;
-
-    modalIsoBody.innerHTML = `
-      <div class="iso-detail-card">
-        <h5>Chapter &amp; Domain</h5>
-        <p>${escapeHtml(c.chapter)} &bull; Type: ${escapeHtml(c.type)} &bull; Concept: ${escapeHtml(c.concept)}</p>
-      </div>
-      <div class="iso-detail-card">
-        <h5>Plain English Requirement</h5>
-        <p>${escapeHtml(c.requirement)}</p>
-      </div>
-      <div class="iso-detail-card">
-        <h5>Sub-Controls Checklist</h5>
-        <pre>${escapeHtml(c.sub_controls || 'Standard baseline review')}</pre>
-      </div>
-      <div class="iso-detail-card">
-        <h5>Typical Audit Evidence</h5>
-        <p>${escapeHtml(c.evidence || 'Documented SOPs, access tickets, or system logs')}</p>
-      </div>
-      <div class="iso-detail-card">
-        <h5>Common Real-World Operational Gaps</h5>
-        <p>${escapeHtml(c.common_gaps || 'Informal workarounds without audit logging')}</p>
-      </div>
-      <div class="iso-detail-card">
-        <h5>Roles to Consult</h5>
-        <p>${escapeHtml(c.consult_roles || 'Department Leads and Systems Administrators')}</p>
-      </div>
-      <div class="iso-detail-card highlight">
-        <h5>Pragmatic Compromise / Compensating Controls</h5>
-        <p>${escapeHtml(c.compensating_controls || 'Deploy temporary monitored jump-hosts or time-boxed delegation')}</p>
-      </div>
+    const statuses = ['OPEN', 'IN_PROGRESS', 'ACCEPTED_RISK', 'RESOLVED'];
+    return `
+      <article class="gap-card ${sevCls}" data-gap-id="${esc(g.id)}">
+        <div class="gap-card-header">
+          <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <span class="badge-soft">${esc(g.standard_clause || g.req_id)}</span>
+            <span class="badge-soft terracotta">${esc(g.severity)}</span>
+            <span class="badge-soft sage">${esc(g.status)}</span>
+          </div>
+          <button type="button" class="pill-btn small secondary" data-inspect-gap-id="${esc(g.id)}">Inspect on Diagram</button>
+        </div>
+        <p style="margin:4px 0; font-weight:600;">${esc(g.warm_summary)}</p>
+        ${driftHtml}
+        ${stepsHtml}
+        ${compHtml}
+        <div class="status-btn-row">
+          ${statuses
+            .map((st) => `<button type="button" class="pill-btn small ${g.status === st ? 'primary' : ''}" data-gap-id="${esc(g.id)}" data-gap-status-btn="${st}">${esc(st.replace('_', ' '))}</button>`)
+            .join('')}
+        </div>
+      </article>
     `;
-
-    modalIsoDetail.classList.add('open');
   }
 
-  function closeIsoDetailModal() {
-    modalIsoDetail.classList.remove('open');
-  }
+  function openGapSlideover(nodeId, matchingGaps) {
+    const drawer = document.getElementById('gap-slideover');
+    const titleEl = document.getElementById('slideover-title');
+    const bodyEl = document.getElementById('slideover-body');
+    if (!drawer || !bodyEl) return;
 
-  btnCloseIsoDetail.addEventListener('click', closeIsoDetailModal);
-  btnDismissIsoDetail.addEventListener('click', closeIsoDetailModal);
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      closeIsoDetailModal();
-      modalByok.classList.remove('open');
+    if (titleEl) {
+      titleEl.textContent = `Helpful Next Steps (${matchingGaps.length}) — ${nodeId}`;
     }
-  });
 
-  filterIsoChapter.addEventListener('change', (e) => {
-    const chap = e.target.value.toLowerCase();
-    const filtered = allIsoControls.filter(c => !chap || c.chapter.toLowerCase().includes(chap));
-    renderIsoTable(filtered);
-  });
+    bodyEl.innerHTML = matchingGaps
+      .map((g) => {
+        const statuses = ['OPEN', 'IN_PROGRESS', 'ACCEPTED_RISK', 'RESOLVED'];
+        return `
+          <div class="gap-card sev-${esc(String(g.severity || 'INFO').toLowerCase())}">
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+              <span class="badge-soft">${esc(g.standard_clause || g.req_id)}</span>
+              <span class="badge-soft terracotta">${esc(g.severity)}</span>
+              <span class="badge-soft sage">${esc(g.status)}</span>
+            </div>
+            <p style="margin:0 0 6px; font-weight:600;">${esc(g.warm_summary)}</p>
+            ${g.policy_vs_reality ? `<div class="policy-drift-box">${esc(g.policy_vs_reality)}</div>` : ''}
+            ${Array.isArray(g.action_steps) && g.action_steps.length ? `<ol class="gap-steps-list">${g.action_steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : ''}
+            <div class="status-btn-row">
+              ${statuses
+                .map((st) => `<button type="button" class="pill-btn small ${g.status === st ? 'primary' : ''}" data-slideover-gap-id="${esc(g.id)}" data-slideover-status="${st}">${esc(st.replace('_', ' '))}</button>`)
+                .join('')}
+            </div>
+          </div>
+        `;
+      })
+      .join('');
 
-  filterIsoSearch.addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
-    const filtered = allIsoControls.filter(c =>
-      c.control_id.toLowerCase().includes(term) ||
-      c.title.toLowerCase().includes(term) ||
-      c.requirement.toLowerCase().includes(term)
-    );
-    renderIsoTable(filtered);
-  });
+    bodyEl.querySelectorAll('[data-slideover-status]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        handleUpdateGapStatus(btn.dataset.slideoverGapId, btn.dataset.slideoverStatus, nodeId);
+      });
+    });
 
-  btnRunGapAnalysis.addEventListener('click', async () => {
-    if (!activeProjectId) {
-      showToast('Please select an assessment project first.', 'error');
+    drawer.classList.remove('hidden');
+  }
+
+  function hideGapSlideover() {
+    document.getElementById('gap-slideover')?.classList.add('hidden');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Deliverables & Brand Profile
+  // ---------------------------------------------------------------------------
+
+  function renderDeliverablesControls() {
+    if (!state.projectId) return;
+    const docSel = document.getElementById('select-deliverable-type');
+    const procSel = document.getElementById('select-deliverable-process');
+    const frame = document.getElementById('deliverable-preview-frame');
+    const models = state.workspace?.process_models || [];
+
+    if (procSel) {
+      procSel.innerHTML = models
+        .map((m) => `<option value="${esc(m.id)}">${esc(m.title)}</option>`)
+        .join('');
+      if (state.activeProcessId) procSel.value = state.activeProcessId;
+      procSel.classList.toggle('hidden', docSel?.value !== 'prozesssteckbrief');
+    }
+
+    // Hydrate brand form inputs from workspace
+    const bp = state.workspace?.brand_profile || {};
+    const orgInput = document.getElementById('input-brand-org');
+    const fontSel = document.getElementById('select-brand-font');
+    const primInput = document.getElementById('input-brand-primary');
+    const accInput = document.getElementById('input-brand-accent');
+    const footInput = document.getElementById('input-brand-footer');
+
+    if (orgInput && !orgInput.matches(':focus')) orgInput.value = bp.org_name || state.workspace?.project?.title || '';
+    if (fontSel && bp.font_family) fontSel.value = bp.font_family;
+    if (primInput && bp.primary_color) primInput.value = bp.primary_color;
+    if (accInput && bp.accent_color) accInput.value = bp.accent_color;
+    if (footInput && !footInput.matches(':focus')) footInput.value = bp.footer_text || '';
+
+    const docType = docSel?.value || 'remediation_plan';
+    const pid = docType === 'prozesssteckbrief' ? (procSel?.value || state.activeProcessId) : state.activeProcessId;
+
+    const htmlUrl = API.getDeliverableUrl(state.projectId, docType, 'html', pid);
+    const pdfUrl = API.getDeliverableUrl(state.projectId, docType, 'pdf', pid);
+    const xlsxUrl = API.getDeliverableUrl(state.projectId, docType, 'xlsx', pid);
+    const bpmnUrl = API.getDeliverableUrl(state.projectId, docType, 'bpmn', pid);
+    const oscalUrl = `/api/v1/export/oscal/${encodeURIComponent(state.projectId)}`;
+
+    const lPdf = document.getElementById('link-download-pdf');
+    const lHtml = document.getElementById('link-open-html');
+    const lXlsx = document.getElementById('link-download-xlsx');
+    const lBpmn = document.getElementById('link-download-bpmn');
+    const lOscal = document.getElementById('link-download-oscal');
+    if (lPdf) lPdf.href = pdfUrl;
+    if (lHtml) lHtml.href = htmlUrl;
+    if (lXlsx) lXlsx.href = xlsxUrl;
+    if (lBpmn) lBpmn.href = bpmnUrl;
+    if (lOscal) lOscal.href = oscalUrl;
+
+    if (frame && state.activeView === 'view-deliverables') {
+      frame.src = `${htmlUrl}&_ts=${Date.now()}`;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Actions (Turns, Canvas Sync, Gap Status Updates, Brand, GDPR, BYOK)
+  // ---------------------------------------------------------------------------
+
+  async function handleSendTurn() {
+    if (!state.projectId || state.isSending) return;
+    const msgBox = document.getElementById('input-turn-message');
+    const sendBtn = document.getElementById('btn-send-turn');
+    const docSel = document.getElementById('select-upload-doctype');
+    const langSel = document.getElementById('select-language');
+
+    const msg = (msgBox?.value || '').trim();
+    const file = state.pendingFile;
+
+    if (!msg && !file) {
+      showToast('Enter a short message or attach a file first.', 'info');
       return;
     }
 
-    btnRunGapAnalysis.disabled = true;
-    btnRunGapAnalysis.textContent = 'Evaluating Operational Alignment...';
+    state.isSending = true;
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Working...';
+    }
 
     try {
-      const res = await API.runGapAnalysis(activeProjectId);
-      GapDashboard.render(res);
-      showToast('Gap analysis completed against 93 ISO 27002 controls.', 'success');
-    } catch (err) {
-      showToast('Error running gap analysis: ' + err.message, 'error');
-    } finally {
-      btnRunGapAnalysis.disabled = false;
-      btnRunGapAnalysis.textContent = 'Run Plain-English Gap Analysis →';
-    }
-  });
-
-  // ============================================================================
-  // OBJECT-CENTRIC STRUCTURE TREE & PLOTHOLES
-  // ============================================================================
-  const structureSummaryHint = document.getElementById('structure-summary-hint');
-  const entityTreeContainer = document.getElementById('entity-tree-container');
-  const plotholesContainer = document.getElementById('plotholes-container');
-  const selectEntityType = document.getElementById('select-entity-type');
-  const inputEntityName = document.getElementById('input-entity-name');
-  const inputEntityOwner = document.getElementById('input-entity-owner');
-  const selectEntityParent = document.getElementById('select-entity-parent');
-  const btnAddEntity = document.getElementById('btn-add-entity');
-  const btnExportOscal = document.getElementById('btn-export-oscal-report');
-
-  function renderEntityBranch(node, depth = 0) {
-    const pad = depth * 18;
-    const ownerTag = node.owner_role ? `<span class="subtext">Owner: ${escapeHtml(node.owner_role)}</span>` : '';
-    const inh = node.inherited_protection;
-    let inhBadge = '';
-    if (inh && (inh.confidentiality || inh.integrity || inh.availability || inh.rto !== null)) {
-      const parts = [
-        inh.confidentiality ? `C:${inh.confidentiality}` : '',
-        inh.integrity ? `I:${inh.integrity}` : '',
-        inh.availability ? `A:${inh.availability}` : '',
-        inh.rto !== null && inh.rto !== undefined ? `RTO:${inh.rto}h` : ''
-      ].filter(Boolean);
-      if (parts.length) {
-        inhBadge = `<span class="kind-badge process" title="Inherited via BSI Maximumprinzip">Inherited ${escapeHtml(parts.join(' / '))}</span>`;
-      }
-    }
-    const provenCount = (node.assessments || []).filter(a => a.status !== 'NEEDS_USER_INPUT').length;
-    const evidenceBadge = provenCount > 0 ? `<span class="subtext">${provenCount} verified rule(s)</span>` : '';
-    const childrenHtml = (node.children || []).map(c => renderEntityBranch(c, depth + 1)).join('');
-
-    return `
-      <div style="margin-left: ${pad}px; padding: 6px 8px; border-left: 2px solid var(--border-subtle, #334155); margin-bottom: 4px;">
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-          <span class="kind-badge">${escapeHtml(node.entity_type)}</span>
-          <strong>${escapeHtml(node.name)}</strong>
-          ${ownerTag}
-          ${inhBadge}
-          ${evidenceBadge}
-          <button type="button" class="pill-btn secondary btn-del-entity" data-id="${escapeHtml(node.id)}" style="margin-left: auto; padding: 2px 8px; font-size: 0.75rem;">Remove</button>
-        </div>
-        ${childrenHtml}
-      </div>
-    `;
-  }
-
-  async function loadStructure(projId) {
-    if (!projId) return;
-    try {
-      const [struct, ph] = await Promise.all([
-        API.getEntities(projId),
-        API.getPlotholes(projId)
-      ]);
-      structureSummaryHint.textContent = `${struct.total_entities} entities, ${struct.total_dependencies} links`;
-
-      selectEntityParent.innerHTML = '<option value="">No Parent (Top-Level)</option>';
-      (struct.entities || []).forEach(e => {
-        const opt = document.createElement('option');
-        opt.value = e.id;
-        opt.textContent = `[${e.entity_type}] ${e.name}`;
-        selectEntityParent.appendChild(opt);
+      const res = await API.sendTurn(state.projectId, {
+        inputKind: 'chat',
+        message: msg,
+        activeProcessId: state.activeProcessId,
+        docType: docSel?.value || 'AUTO',
+        file,
+        language: langSel?.value || 'en'
       });
-
-      if (!struct.tree || struct.tree.length === 0) {
-        entityTreeContainer.innerHTML = '<span class="empty-state">Upload documents or answer survey questions to build the entity hierarchy.</span>';
-      } else {
-        entityTreeContainer.innerHTML = struct.tree.map(n => renderEntityBranch(n, 0)).join('');
-        entityTreeContainer.querySelectorAll('.btn-del-entity').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            try {
-              await API.deleteEntity(projId, btn.dataset.id);
-              await loadStructure(projId);
-              showToast('Entity removed.', 'info', 2000);
-            } catch (err) {
-              showToast('Failed to remove entity: ' + err.message, 'error');
-            }
-          });
-        });
-      }
-
-      if (ph && ph.plotholes && ph.plotholes.length > 0) {
-        plotholesContainer.innerHTML = `
-          <div class="subtext" style="margin-bottom: 4px;"><strong>Open Structural Gaps / Plotholes (${ph.plothole_count}):</strong></div>
-          <ul style="margin: 0; padding-left: 18px; font-size: 0.85rem;">
-            ${ph.plotholes.slice(0, 6).map(p => `<li><strong>[${escapeHtml(p.severity)}]</strong> ${escapeHtml(p.message)}</li>`).join('')}
-          </ul>
-        `;
-      } else {
-        plotholesContainer.innerHTML = '';
-      }
+      if (msgBox) msgBox.value = '';
+      clearPendingFile();
+      applyWorkspace(res.workspace);
+      showToast('Workspace updated.', 'success');
     } catch (err) {
-      console.warn('Could not load structure:', err);
+      showToast(err.message || 'Turn failed.', 'error');
+    } finally {
+      state.isSending = false;
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      }
     }
   }
 
-  if (btnAddEntity) {
-    btnAddEntity.addEventListener('click', async () => {
-      if (!activeProjectId) {
-        showToast('Select or create an assessment first.', 'info');
+  async function handleSaveOrExtractBpmn(extractDescription) {
+    if (!state.projectId || !state.activeProcessId || !studio) {
+      showToast('Select or create a process diagram first.', 'info');
+      return;
+    }
+    try {
+      const xml = await studio.exportXML();
+      if (!xml) {
+        showToast('No BPMN XML available to save.', 'error');
         return;
       }
-      const name = inputEntityName.value.trim();
-      if (!name) {
-        showToast('Enter an entity name.', 'error');
+      const res = await API.syncProcessBpmn(state.projectId, state.activeProcessId, xml, extractDescription);
+      applyWorkspace(res.workspace);
+      showToast(
+        extractDescription ? 'Description extracted & gap checks updated.' : 'Diagram edits saved.',
+        'success'
+      );
+    } catch (err) {
+      showToast(`Diagram update failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function handleUpdateGapStatus(gapId, status, reopenNodeId = null) {
+    if (!state.projectId || !gapId) return;
+    try {
+      await API.updateGapStatus(state.projectId, gapId, status);
+      const ws = await API.getWorkspace(state.projectId);
+      applyWorkspace(ws);
+      if (reopenNodeId) {
+        const updatedGaps = (ws.remediation_gaps || []).filter(
+          (g) => g.id === gapId || (Array.isArray(g.affected_node_ids) && g.affected_node_ids.includes(reopenNodeId))
+        );
+        if (updatedGaps.length > 0) openGapSlideover(reopenNodeId, updatedGaps);
+      }
+      showToast(`Updated item to ${status.replace('_', ' ')}.`, 'success');
+    } catch (err) {
+      showToast(`Status update failed: ${err.message}`, 'error');
+    }
+  }
+
+  function setPendingFile(file) {
+    state.pendingFile = file || null;
+    const chip = document.getElementById('pending-file-chip');
+    const nameEl = document.getElementById('pending-file-name');
+    if (chip && nameEl) {
+      if (file) {
+        nameEl.textContent = file.name;
+        chip.classList.remove('hidden');
+      } else {
+        nameEl.textContent = '';
+        chip.classList.add('hidden');
+      }
+    }
+  }
+
+  function clearPendingFile() {
+    setPendingFile(null);
+    const fi = document.getElementById('file-universal-upload');
+    if (fi) fi.value = '';
+  }
+
+  function switchView(viewId) {
+    state.activeView = viewId;
+    document.querySelectorAll('.workspace-tab-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.view === viewId);
+    });
+    document.querySelectorAll('.workspace-view').forEach((view) => {
+      view.classList.toggle('active', view.id === viewId);
+    });
+    if (viewId === 'view-bpmn' && studio) {
+      requestAnimationFrame(() => studio.fitViewport());
+    } else if (viewId === 'view-deliverables') {
+      renderDeliverablesControls();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Event Wiring
+  // ---------------------------------------------------------------------------
+
+  function bindEvents() {
+    document.getElementById('select-project')?.addEventListener('change', (e) => {
+      selectProject(e.target.value);
+    });
+
+    const newProjBar = document.getElementById('inline-new-project-bar');
+    const newProjInput = document.getElementById('input-new-project-title');
+    document.getElementById('btn-new-project')?.addEventListener('click', () => {
+      newProjBar?.classList.remove('hidden');
+      newProjInput?.focus();
+    });
+    document.getElementById('btn-cancel-new-project')?.addEventListener('click', () => {
+      newProjBar?.classList.add('hidden');
+    });
+
+    const confirmNewProject = async () => {
+      const title = (newProjInput?.value || '').trim();
+      if (!title) {
+        showToast('Enter a project title.', 'info');
         return;
       }
       try {
-        await API.createEntity(activeProjectId, {
-          entity_type: selectEntityType.value,
-          name,
-          owner_role: inputEntityOwner.value.trim() || null,
-          parent_id: selectEntityParent.value || null
-        });
-        inputEntityName.value = '';
-        inputEntityOwner.value = '';
-        await loadStructure(activeProjectId);
-        showToast('Entity added to hierarchy.', 'success', 2000);
+        const created = await API.createProject(title, '');
+        if (newProjInput) newProjInput.value = '';
+        newProjBar?.classList.add('hidden');
+        await initProjects(created.id);
+        showToast(`Created "${created.title}".`, 'success');
       } catch (err) {
-        showToast('Error adding entity: ' + err.message, 'error');
+        showToast(`Failed creating project: ${err.message}`, 'error');
+      }
+    };
+    document.getElementById('btn-confirm-new-project')?.addEventListener('click', confirmNewProject);
+    newProjInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirmNewProject();
       }
     });
-  }
 
-  if (btnExportOscal) {
-    btnExportOscal.addEventListener('click', () => {
-      if (!activeProjectId) {
-        showToast('Please select or create an assessment first.', 'error');
+    // GDPR Wipe with safe 2-click confirmation
+    const gdprBtn = document.getElementById('btn-gdpr-purge');
+    gdprBtn?.addEventListener('click', async () => {
+      if (!state.projectId) return;
+      if (!state.gdprConfirmArmed) {
+        state.gdprConfirmArmed = true;
+        gdprBtn.textContent = 'Confirm Wipe?';
+        clearTimeout(state.gdprTimer);
+        state.gdprTimer = setTimeout(() => {
+          state.gdprConfirmArmed = false;
+          gdprBtn.textContent = 'GDPR Wipe';
+        }, 4000);
         return;
       }
-      window.location.href = `/api/v1/export/oscal/${activeProjectId}`;
+      state.gdprConfirmArmed = false;
+      gdprBtn.textContent = 'GDPR Wipe';
+      clearTimeout(state.gdprTimer);
+      try {
+        await API.gdprPurge(state.projectId);
+        sessionStorage.removeItem(STORAGE_PROJECT_KEY);
+        localStorage.removeItem(STORAGE_PROJECT_KEY);
+        state.activeProcessId = null;
+        await initProjects();
+        showToast('Project data and checkpoints permanently wiped.', 'success');
+      } catch (err) {
+        showToast(`Wipe failed: ${err.message}`, 'error');
+      }
+    });
+
+    // Onboarding Cards
+    document.getElementById('btn-onboard-scratch')?.addEventListener('click', () => {
+      const box = document.getElementById('input-turn-message');
+      if (box) {
+        box.placeholder = 'e.g. Citizen Registration: Citizen emails PDF -> Clerk checks Anmeldesystem -> Certificate sent';
+        box.focus();
+      }
+    });
+    document.getElementById('btn-onboard-excel')?.addEventListener('click', () => {
+      const dt = document.getElementById('select-upload-doctype');
+      if (dt) dt.value = 'EXCEL_INVENTORY';
+      document.getElementById('file-universal-upload')?.click();
+    });
+    document.getElementById('btn-onboard-document')?.addEventListener('click', () => {
+      const dt = document.getElementById('select-upload-doctype');
+      if (dt) dt.value = 'AUTO';
+      document.getElementById('file-universal-upload')?.click();
+    });
+    document.getElementById('btn-onboard-bpmn')?.addEventListener('click', () => {
+      document.getElementById('file-universal-upload')?.click();
+    });
+
+    // Universal Attachment & Composer Drag-n-Drop
+    const fileInput = document.getElementById('file-universal-upload');
+    document.getElementById('btn-attach-file')?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) setPendingFile(file);
+    });
+    document.getElementById('btn-clear-pending-file')?.addEventListener('click', clearPendingFile);
+
+    const composer = document.getElementById('coach-composer');
+    if (composer) {
+      composer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        composer.classList.add('drag-over');
+      });
+      composer.addEventListener('dragleave', () => composer.classList.remove('drag-over'));
+      composer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        composer.classList.remove('drag-over');
+        const file = e.dataTransfer?.files?.[0];
+        if (file) setPendingFile(file);
+      });
+    }
+
+    document.getElementById('btn-send-turn')?.addEventListener('click', handleSendTurn);
+    document.getElementById('input-turn-message')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSendTurn();
+      }
+    });
+
+    // Right Pane View Tabs
+    document.querySelectorAll('.workspace-tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => switchView(btn.dataset.view));
+    });
+
+    // BPMN Toolbar
+    document.getElementById('select-process-model')?.addEventListener('change', (e) => {
+      state.activeProcessId = e.target.value || null;
+      hideGapSlideover();
+      renderBpmnView();
+      renderDeliverablesControls();
+    });
+    document.getElementById('btn-extract-canvas-gaps')?.addEventListener('click', () => handleSaveOrExtractBpmn(true));
+    document.getElementById('btn-save-bpmn')?.addEventListener('click', () => handleSaveOrExtractBpmn(false));
+    document.getElementById('btn-zoom-fit')?.addEventListener('click', () => studio?.fitViewport());
+    document.getElementById('btn-zoom-in')?.addEventListener('click', () => studio?.zoomIn());
+    document.getElementById('btn-zoom-out')?.addEventListener('click', () => studio?.zoomOut());
+    document.getElementById('btn-apply-resize')?.addEventListener('click', () => {
+      const w = document.getElementById('node-width-input')?.value;
+      const h = document.getElementById('node-height-input')?.value;
+      if (w && h && studio?.resizeSelectedElement(w, h)) {
+        showToast('Resized selected element.', 'success');
+      } else {
+        showToast('Select a BPMN box on canvas first.', 'info');
+      }
+    });
+    document.getElementById('btn-export-bpmn')?.addEventListener('click', async () => {
+      const xml = await studio?.exportXML();
+      if (!xml) return;
+      const blob = new Blob([xml], { type: 'application/xml' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'pmga-process.bpmn';
+      a.click();
+    });
+    document.getElementById('btn-export-svg')?.addEventListener('click', async () => {
+      const svg = await studio?.exportSVG();
+      if (!svg) return;
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'pmga-process.svg';
+      a.click();
+    });
+    document.getElementById('btn-close-slideover')?.addEventListener('click', hideGapSlideover);
+
+    // Architecture quick add entity
+    document.getElementById('btn-add-entity')?.addEventListener('click', async () => {
+      if (!state.projectId) return;
+      const name = (document.getElementById('input-entity-name')?.value || '').trim();
+      const entityType = document.getElementById('select-entity-type')?.value || 'APPLICATION';
+      const ownerRole = (document.getElementById('input-entity-owner')?.value || '').trim();
+      if (!name) {
+        showToast('Enter an entity name.', 'info');
+        return;
+      }
+      try {
+        await API.createEntity(state.projectId, {
+          name,
+          entity_type: entityType,
+          owner_role: ownerRole || null
+        });
+        document.getElementById('input-entity-name').value = '';
+        const ws = await API.getWorkspace(state.projectId);
+        applyWorkspace(ws);
+        showToast(`Added ${entityType.toLowerCase()} "${name}".`, 'success');
+      } catch (err) {
+        showToast(`Failed adding entity: ${err.message}`, 'error');
+      }
+    });
+
+    // Remediation filter
+    document.getElementById('filter-gap-status')?.addEventListener('change', (e) => {
+      state.gapFilterStatus = e.target.value;
+      renderRemediationPlan();
+    });
+
+    // Deliverables & Brand Profile
+    document.getElementById('select-deliverable-type')?.addEventListener('change', renderDeliverablesControls);
+    document.getElementById('select-deliverable-process')?.addEventListener('change', renderDeliverablesControls);
+
+    document.getElementById('input-brand-logo')?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        state.pendingLogoDataUri = String(reader.result || '');
+      };
+      reader.readAsDataURL(file);
+    });
+
+    document.getElementById('btn-apply-brand')?.addEventListener('click', async () => {
+      if (!state.projectId) return;
+      try {
+        const payload = {
+          org_name: document.getElementById('input-brand-org')?.value || '',
+          font_family: document.getElementById('select-brand-font')?.value || 'Plus Jakarta Sans',
+          primary_color: document.getElementById('input-brand-primary')?.value || '#1E4E68',
+          accent_color: document.getElementById('input-brand-accent')?.value || '#C86D44',
+          footer_text: document.getElementById('input-brand-footer')?.value || '',
+          clear_logo: Boolean(document.getElementById('chk-clear-logo')?.checked)
+        };
+        if (state.pendingLogoDataUri) {
+          payload.logo_data_uri = state.pendingLogoDataUri;
+        }
+        await API.saveBrandProfile(state.projectId, payload);
+        state.pendingLogoDataUri = null;
+        if (document.getElementById('chk-clear-logo')) document.getElementById('chk-clear-logo').checked = false;
+        const ws = await API.getWorkspace(state.projectId);
+        applyWorkspace(ws);
+        showToast('Deliverable branding updated.', 'success');
+      } catch (err) {
+        showToast(`Branding update failed: ${err.message}`, 'error');
+      }
+    });
+
+    // BYOK AI Settings Modal
+    const modal = document.getElementById('modal-byok');
+    const openByok = () => {
+      const provSel = document.getElementById('select-llm-provider');
+      const modelInput = document.getElementById('input-llm-model');
+      const urlInput = document.getElementById('input-llm-base-url');
+      const keyInput = document.getElementById('input-gemini-key');
+      if (provSel) provSel.value = API.getProvider();
+      if (modelInput) modelInput.value = API.getModelName();
+      if (urlInput) urlInput.value = API.getBaseUrl();
+      if (keyInput) keyInput.value = API.getApiKey();
+      modal?.classList.remove('hidden');
+    };
+    const closeByok = () => modal?.classList.add('hidden');
+
+    document.getElementById('btn-open-byok')?.addEventListener('click', openByok);
+    document.getElementById('btn-banner-byok')?.addEventListener('click', openByok);
+    document.getElementById('btn-close-byok')?.addEventListener('click', closeByok);
+
+    document.getElementById('btn-clear-byok')?.addEventListener('click', () => {
+      API.setApiKey('', false);
+      const keyInput = document.getElementById('input-gemini-key');
+      if (keyInput) keyInput.value = '';
+      renderLlmStatus();
+      closeByok();
+      showToast('Session AI key cleared.', 'info');
+    });
+
+    document.getElementById('btn-save-byok')?.addEventListener('click', () => {
+      const prov = document.getElementById('select-llm-provider')?.value || 'gemini';
+      const model = document.getElementById('input-llm-model')?.value || '';
+      const baseUrl = document.getElementById('input-llm-base-url')?.value || '';
+      const key = document.getElementById('input-gemini-key')?.value || '';
+      API.setProvider(prov);
+      API.setModelName(model);
+      API.setBaseUrl(baseUrl);
+      API.setApiKey(key, true);
+      renderLlmStatus();
+      closeByok();
+      showToast(key.trim() ? 'Session AI key ready.' : 'Saved provider settings (offline mode).', 'success');
+    });
+
+    document.getElementById('btn-test-llm')?.addEventListener('click', async () => {
+      const out = document.getElementById('byok-test-result');
+      const prov = document.getElementById('select-llm-provider')?.value || 'gemini';
+      const model = document.getElementById('input-llm-model')?.value || '';
+      const baseUrl = document.getElementById('input-llm-base-url')?.value || '';
+      const key = document.getElementById('input-gemini-key')?.value || '';
+      if (out) out.textContent = 'Testing connection...';
+      try {
+        const res = await API.testLLMConnection({ provider: prov, model_name: model, base_url: baseUrl, api_key: key });
+        if (out) out.textContent = res.ok ? `Connected (${res.provider}: ${res.model})` : (res.error || 'Connection test failed.');
+      } catch (err) {
+        if (out) out.textContent = `Test failed: ${err.message}`;
+      }
     });
   }
 
-  // ============================================================================
-  // EXPORTS & NON-BLOCKING GDPR PURGE
-  // ============================================================================
-  function triggerExcelDownload() {
-    if (!activeProjectId) {
-      showToast('Please select or create an assessment first.', 'error');
-      return;
-    }
-    showToast('Preparing multi-sheet Excel workbook...', 'info', 2000);
-    window.location.href = `/api/v1/export/excel/${activeProjectId}`;
-  }
-
-  btnHeaderExportExcel.addEventListener('click', triggerExcelDownload);
-  btnExportExcel.addEventListener('click', triggerExcelDownload);
-
-  // Non-blocking 2-step confirmation pattern (Replaces window.confirm)
-  btnGdprPurge.addEventListener('click', async () => {
-    if (!activeProjectId) {
-      showToast('No active project to purge.', 'info');
-      return;
-    }
-
-    if (!btnGdprPurge.dataset.confirming) {
-      // First click: prompt state
-      btnGdprPurge.dataset.confirming = 'true';
-      btnGdprPurge.textContent = 'Confirm GDPR Purge? (Click to Erase)';
-      btnGdprPurge.style.backgroundColor = '#991B1B';
-
-      gdprPendingTimeout = setTimeout(() => {
-        delete btnGdprPurge.dataset.confirming;
-        btnGdprPurge.textContent = 'GDPR 1-Click Project Purge';
-        btnGdprPurge.style.backgroundColor = '';
-      }, 5000);
-      return;
-    }
-
-    // Second click: execute purge
-    clearTimeout(gdprPendingTimeout);
-    delete btnGdprPurge.dataset.confirming;
-    btnGdprPurge.textContent = 'Purging...';
-
-    try {
-      await API.gdprPurge(activeProjectId);
-      activeProjectId = null;
-      inputActual.value = '';
-      inputFormal.value = '';
-      await refreshProjects();
-      switchTab('tab-intake');
-      showToast('Project and all evidence permanently expunged under GDPR Art. 17.', 'info', 5000);
-    } catch (err) {
-      showToast('Failed to purge project: ' + err.message, 'error');
-    } finally {
-      btnGdprPurge.textContent = 'GDPR 1-Click Project Purge';
-      btnGdprPurge.style.backgroundColor = '';
-    }
+  // ---------------------------------------------------------------------------
+  // Boot
+  // ---------------------------------------------------------------------------
+  document.addEventListener('DOMContentLoaded', async () => {
+    studio = new BPMNStudio('bpmn-canvas');
+    bindEvents();
+    await initProjects(readPreferredProjectId());
   });
-
-  // Utility to escape untrusted HTML
-  function escapeHtml(str) {
-    if (str === null || str === undefined) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  // ============================================================================
-  // INITIALIZATION
-  // ============================================================================
-  bpmnStudio = new BPMNStudio('bpmn-canvas');
-  surveyPreviewStudio = new BPMNStudio('survey-preview-canvas');
-
-  await updateLlmStatus();
-  await refreshProjects();
-  await loadBenchmarks();
-  await loadCorpusWorkbench();
-  await loadIsoControls();
-});
+})();

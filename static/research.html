@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PMGA Research Corpus &amp; Standards Evaluation</title>
+  <meta name="description" content="12-Model Matei Ground-Truth Corpus, Linguistic Perturbation Benchmark, and Multi-Standard Verification Explorer">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/styles.css?v=3.0.0">
+</head>
+<body>
+  <header class="app-header">
+    <a href="/" class="brand" title="Back to Overview">
+      <div class="brand-crest">PMGA</div>
+      <div class="brand-titles">
+        <h1>PMGA RESEARCH</h1>
+        <span class="subtitle">Academic Corpus &amp; Standards Verifier</span>
+      </div>
+    </a>
+    <div class="header-actions">
+      <a href="/studio" class="pill-btn primary">&larr; Back to Municipal Studio</a>
+    </div>
+  </header>
+
+  <main class="research-main">
+    <section class="warm-card">
+      <div class="card-header-row">
+        <div>
+          <h2>12-Model Ground-Truth Corpus (Matei et al. Evaluation)</h2>
+          <p class="subtext">Separated from the municipal studio so public-sector teams never face benchmark jargon, while preserving full scientific evaluation routes.</p>
+        </div>
+        <button id="btn-verify-standards" class="pill-btn secondary" type="button">Run Standards Mapping Check</button>
+      </div>
+      <div id="standards-verify-banner" class="info-banner hidden"></div>
+
+      <div class="research-controls-row">
+        <div>
+          <label for="select-corpus-model" class="field-label">Ground-Truth Archetype</label>
+          <select id="select-corpus-model" class="civic-select"></select>
+        </div>
+        <div>
+          <label for="select-corpus-style" class="field-label">Linguistic Perturbation Style</label>
+          <select id="select-corpus-style" class="civic-select">
+            <option value="formal">1. Formal English</option>
+            <option value="shorthand">2. Messy Shorthand (-&gt;)</option>
+            <option value="out_of_order">3. Out-of-Order Sentences</option>
+            <option value="parallel_and_loop">4. Concurrency &amp; Loops</option>
+          </select>
+        </div>
+        <button id="btn-inspect-corpus" class="pill-btn primary" type="button">Inspect Model &amp; Style</button>
+      </div>
+
+      <div id="corpus-preview-box" class="research-preview hidden">
+        <div class="meta-row" id="corpus-meta-row"></div>
+        <div class="split-2col">
+          <div>
+            <h4>Perturbed Text Prompt</h4>
+            <pre id="corpus-style-text" class="mono-pre"></pre>
+          </div>
+          <div>
+            <h4>Canonical Graph Nodes &amp; Edges</h4>
+            <pre id="corpus-graph-json" class="mono-pre"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="warm-card">
+      <h3>Empirical Municipal Case Studies</h3>
+      <div id="benchmarks-grid" class="benchmarks-grid"></div>
+    </section>
+
+    <section class="warm-card">
+      <div class="card-header-row">
+        <h3>ISO/IEC 27002:2022 &amp; Multi-Standard Reference Catalog (133 Requirements)</h3>
+        <input type="text" id="filter-catalog" class="civic-input" placeholder="Search R001–R133 or ISO clause...">
+      </div>
+      <div class="table-wrap">
+        <table class="civic-table">
+          <thead>
+            <tr>
+              <th>Req ID</th>
+              <th>Clause</th>
+              <th>Title</th>
+              <th>Scope</th>
+              <th>Rule</th>
+            </tr>
+          </thead>
+          <tbody id="catalog-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/js/api.js?v=3.0.0"></script>
+  <script src="/static/js/research.js?v=3.0.0"></script>
+</body>
+</html>
